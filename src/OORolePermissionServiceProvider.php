@@ -3,6 +3,7 @@
 namespace OnaOnbir\OORolePermission;
 
 use Illuminate\Support\ServiceProvider;
+use OnaOnbir\OORolePermission\Middlewares\OORoleOrPermissionMiddleware;
 
 class OORolePermissionServiceProvider extends ServiceProvider
 {
@@ -12,6 +13,7 @@ class OORolePermissionServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
+        $this->registerMiddleware();
     }
 
     public function register()
@@ -29,5 +31,11 @@ class OORolePermissionServiceProvider extends ServiceProvider
             __DIR__.'/../config/'.$this->packageName.'.php' => config_path($this->packageName.'.php'),
         ], $this->packageName.'-config');
 
+    }
+
+    private function registerMiddleware()
+    {
+        $router = $this->app['router'];
+        $router->aliasMiddleware('oo_rp', OORoleOrPermissionMiddleware::class);
     }
 }
