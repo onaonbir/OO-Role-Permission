@@ -96,23 +96,26 @@ class OORolePermission
 
     private function checkPermission(array $permissions, string $permission): bool
     {
+        // Direct match
         if (in_array($permission, $permissions, true)) {
             return true;
         }
 
+        // Wildcard match: defined permission has wildcard (e.g., post.*)
         foreach ($permissions as $perm) {
             if (str_ends_with($perm, '.*')) {
-                $wildcard = substr($perm, 0, -2);
-                if (str_starts_with($permission, $wildcard)) {
+                $wildcard = rtrim(substr($perm, 0, -2), '.');
+                if (str_starts_with($permission, $wildcard . '.')) {
                     return true;
                 }
             }
         }
 
+        // Reverse wildcard match: requested permission is a wildcard
         if (str_ends_with($permission, '.*')) {
-            $wildcard = substr($permission, 0, -2);
+            $wildcard = rtrim(substr($permission, 0, -2), '.');
             foreach ($permissions as $perm) {
-                if (str_starts_with($perm, $wildcard)) {
+                if (str_starts_with($perm, $wildcard . '.')) {
                     return true;
                 }
             }
@@ -120,6 +123,7 @@ class OORolePermission
 
         return false;
     }
+
 
     public function flattenPermissions(array $permissions, string $prefix = ''): array
     {

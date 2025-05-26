@@ -42,6 +42,11 @@ trait HasRolesAndPermissions
         return oo_rp()->modelHasPermission($this, $permission);
     }
 
+    public function hasRoleOrCan(array $roles, array $permissions): bool
+    {
+        return $this->hasRole($roles) || $this->hasPermission($permissions);
+    }
+
     public function hasSubPermission(string $key): bool
     {
         return $this->hasPermission($key);
