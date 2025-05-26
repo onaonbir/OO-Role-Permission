@@ -105,7 +105,7 @@ class OORolePermission
         foreach ($permissions as $perm) {
             if (str_ends_with($perm, '.*')) {
                 $wildcard = rtrim(substr($perm, 0, -2), '.');
-                if (str_starts_with($permission, $wildcard . '.')) {
+                if (str_starts_with($permission, $wildcard.'.')) {
                     return true;
                 }
             }
@@ -115,7 +115,7 @@ class OORolePermission
         if (str_ends_with($permission, '.*')) {
             $wildcard = rtrim(substr($permission, 0, -2), '.');
             foreach ($permissions as $perm) {
-                if (str_starts_with($perm, $wildcard . '.')) {
+                if (str_starts_with($perm, $wildcard.'.')) {
                     return true;
                 }
             }
@@ -123,7 +123,6 @@ class OORolePermission
 
         return false;
     }
-
 
     public function flattenPermissions(array $permissions, string $prefix = ''): array
     {
