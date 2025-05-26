@@ -11,7 +11,6 @@ class OORoleOrPermissionMiddleware
     {
         [$roles, $permissions] = $this->parseParameters($parameters);
 
-
         if (! oo_rp()->hasRoleOrCan($roles, $permissions)) {
             abort(403, 'Bu sayfaya erişim yetkiniz yok.');
         }
