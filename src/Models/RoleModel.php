@@ -9,7 +9,7 @@ class RoleModel extends Pivot
 {
     use HasFactory;
 
-    protected $fillable = ['role_id', 'model_type','model_id', 'additional_permissions'];
+    protected $fillable = ['role_id', 'model_type', 'model_id', 'additional_permissions'];
 
     protected $casts = [
         'additional_permissions' => 'array',

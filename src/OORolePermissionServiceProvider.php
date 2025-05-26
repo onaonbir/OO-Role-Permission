@@ -2,9 +2,7 @@
 
 namespace OnaOnbir\OORolePermission;
 
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use OnaOnbir\OOSubscription\Console\Commands\MonitorSubscriptions;
 
 class OORolePermissionServiceProvider extends ServiceProvider
 {
@@ -12,14 +10,14 @@ class OORolePermissionServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
     }
 
     public function register()
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/../config/' . $this->packageName . '.php',
+            __DIR__.'/../config/'.$this->packageName.'.php',
             $this->packageName
         );
 
@@ -32,6 +30,4 @@ class OORolePermissionServiceProvider extends ServiceProvider
         ], $this->packageName.'-config');
 
     }
-
-
 }

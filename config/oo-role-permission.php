@@ -2,7 +2,6 @@
 
 return [
 
-
     'tables' => [
         'roles' => 'oo_roles',
         'role_models' => 'oo_role_models',
@@ -12,8 +11,6 @@ return [
         'role' => \OnaOnbir\OORolePermission\Models\Role::class,
         'role_model' => \OnaOnbir\OORolePermission\Models\RoleModel::class,
     ],
-
-
 
     'permissions' => [
 

@@ -3,7 +3,6 @@
 namespace OnaOnbir\OORolePermission\Services;
 
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 
 class OORolePermission
 {
@@ -166,7 +165,7 @@ class OORolePermission
         return $this->filterPermissionsByGroup(config('oo-role-permission.permissions', []), $group);
     }
 
-    private function filterPermissionsByGroup(array $permissions, string $group, string $parentKey = null): array
+    private function filterPermissionsByGroup(array $permissions, string $group, ?string $parentKey = null): array
     {
         $result = [];
 
