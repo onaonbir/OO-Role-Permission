@@ -3,14 +3,26 @@
 **OORolePermission** is a high-performance, dynamic, model-based, and polymorphic role & permission management system for Laravel.  
 It supports structured role definitions, JSON-based permissions, wildcard matching, scoped checks, **time-based constraints**, caching, and custom service-driven logic.
 
-## ✨ **v1.2.0 Features**
+## ✨ **v1.3.1 Features & Bug Fixes**
 
 - 🚀 **High Performance**: Built-in caching and N+1 query prevention
-- ⏰ **Time-based Permissions**: Daily, weekly, seasonal, and temporary access control
+- ⏰ **Polymorphic Time Permissions**: Apply time constraints to both Roles and Users
+- 🎯 **Individual User Constraints**: User-level time restrictions without creating new roles
 - 🔒 **Production Ready**: Comprehensive error handling and logging
 - 📊 **Database Optimized**: Smart indexes and constraints
 - 🎯 **Type Safe**: Strict type hints throughout
 - 🔄 **Backward Compatible**: No breaking changes from v1.x.x
+- 🐛 **Fixed**: Cache-related null pointer exceptions
+- 🛡️ **Enhanced**: Robust error handling for timezone and cache operations
+
+### 🔧 **v1.3.1 Bug Fixes**
+
+1. **Fixed Cache Clear Error**: Resolved `clearCacheForRole(): Argument #1 ($roleId) must be of type int, null given` error
+2. **Polymorphic Relationship Fix**: Updated boot method to handle polymorphic relationships correctly
+3. **Enhanced Error Handling**: Added try-catch blocks for timezone operations
+4. **Cache Safety**: Improved cache operations with fallback mechanisms
+5. **Validation Improvements**: Added input validation for day of week, permissions, and time operations
+6. **Type Safety**: Added nullable type hints where appropriate
 
 ---
 
@@ -58,44 +70,85 @@ OO_ROLE_PERMISSION_TIME_CACHE_TTL=1800
 
 ## ⏰ **Time-based Permissions**
 
-### **Business Hours Restriction**
+### **User-Level Time Constraints (NEW!)**
 ```php
-// Admin sadece iş saatlerinde aktif
-$adminRole = Role::create([
-    'name' => 'business_admin',
-    'permissions' => ['admin.*']
-]);
+// Individual user constraints without creating new roles!
 
-$adminRole->timePermissions()->create([
-    'additional_permissions' => null, // Tüm rol izinleri (default)
-    'start_time' => '09:00:00',
-    'end_time' => '17:00:00',
-    'days_of_week' => [1, 2, 3, 4, 5], // Pazartesi-Cuma
-    'timezone' => 'Europe/Istanbul'
-]);
+// Geçici contractor access
+$contractor->addTemporaryUserPermission(
+    ['project.xyz.*', 'documents.read'],
+    now()->addWeeks(4), // 4 hafta süreyle
+    ['description' => 'Temporary contractor access for Project XYZ']
+);
 
-$user->assignRole('business_admin');
+// Stajyer için özel çalışma saatleri
+$intern->addUserTimeConstraint(
+    ['documents.read', 'meetings.attend'],
+    [
+        'start_time' => '10:00:00',
+        'end_time' => '16:00:00',
+        'days_of_week' => [1, 2, 3, 4, 5],
+        'description' => 'Intern working hours'
+    ]
+);
 
-// Kullanım - sadece iş saatlerinde true döner
-$user->hasPermission('admin.access');
+// Emergency admin access (2 saatlik)
+$seniorDev->addTemporaryUserPermission(
+    ['server.admin', 'database.backup'],
+    now()->addHours(2),
+    ['description' => 'Emergency server maintenance']
+);
+
+// Kullanım - Priority system!
+$contractor->hasPermission('project.xyz.edit'); // User constraint öncelikli
+$intern->hasPermission('documents.read'); // Çalışma saatleri kontrol edilir
 ```
 
-### **Specific Permission Time Constraints**
+### **Role-Level Time Constraints**
 ```php
-// Sadece belirli izinlere zaman kısıtı
-$role->timePermissions()->create([
-    'additional_permissions' => ['user.delete', 'admin.settings'], // Sadece bunlara uygulanır
+// Tüm moderatörler için iş saatleri
+$moderatorRole->addTimeConstraint([
+    'additional_permissions' => null, // Tüm rol izinleri
     'start_time' => '09:00:00',
     'end_time' => '17:00:00',
-    'timezone' => 'Europe/Istanbul'
-]);
-
-// Wildcard permissions için
-$role->timePermissions()->create([
-    'additional_permissions' => ['admin.*', 'user.manage.*'], // Wildcard desteği
     'days_of_week' => [1, 2, 3, 4, 5],
     'timezone' => 'Europe/Istanbul'
 ]);
+
+// Sadece belirli izinler için zaman kısıtı
+$adminRole->addPermissionTimeConstraint(
+    ['user.delete', 'system.shutdown'],
+    [
+        'start_time' => '09:00:00',
+        'end_time' => '17:00:00',
+        'description' => 'Critical operations only during business hours'
+    ]
+);
+```
+
+### **Priority System Example**
+```php
+// User hem moderator rolü hem de individual constraint'i varsa:
+$user->assignRole('moderator'); // Role: moderate.* permissions
+$user->addUserTimeConstraint(['moderate.posts'], [
+    'start_time' => '08:00:00',
+    'end_time' => '20:00:00' // User constraint daha geniş saat
+]);
+
+// Priority: User constraint wins!
+$user->hasPermission('moderate.posts'); // 08:00-20:00 arası true
+$user->hasPermission('moderate.users'); // Role constraint (09:00-17:00)
+
+// Debug priority
+$details = $user->hasPermissionWithPriority('moderate.posts');
+/*
+[
+    'has_permission' => true,
+    'source' => 'User Time Constraint',
+    'level' => 'user',
+    'time_valid' => true
+]
+*/
 ```
 
 ### **Temporary Roles**

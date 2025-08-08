@@ -42,11 +42,20 @@ class CacheHelper
             return $callback();
         }
 
-        if (!empty($tags) && self::supportsTagging()) {
-            return Cache::tags($tags)->remember($key, $ttl, $callback);
-        }
+        try {
+            if (!empty($tags) && self::supportsTagging()) {
+                return Cache::tags($tags)->remember($key, $ttl, $callback);
+            }
 
-        return Cache::remember($key, $ttl, $callback);
+            return Cache::remember($key, $ttl, $callback);
+        } catch (\Exception $e) {
+            // If cache fails, execute callback directly
+            Log::warning('Cache remember failed: ' . $e->getMessage(), [
+                'key' => $key,
+                'tags' => $tags
+            ]);
+            return $callback();
+        }
     }
 
     /**
@@ -58,10 +67,17 @@ class CacheHelper
             return;
         }
 
-        if (!empty($tags) && self::supportsTagging()) {
-            Cache::tags($tags)->forget($key);
-        } else {
-            Cache::forget($key);
+        try {
+            if (!empty($tags) && self::supportsTagging()) {
+                Cache::tags($tags)->forget($key);
+            } else {
+                Cache::forget($key);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Cache forget failed: ' . $e->getMessage(), [
+                'key' => $key,
+                'tags' => $tags
+            ]);
         }
     }
 
@@ -74,11 +90,17 @@ class CacheHelper
             return;
         }
 
-        if (!empty($tags) && self::supportsTagging()) {
-            Cache::tags($tags)->flush();
-        } else {
-            // For stores without tagging, we have to flush all
-            Cache::flush();
+        try {
+            if (!empty($tags) && self::supportsTagging()) {
+                Cache::tags($tags)->flush();
+            } else {
+                // For stores without tagging, we have to flush all
+                Cache::flush();
+            }
+        } catch (\Exception $e) {
+            Log::warning('Cache flush failed: ' . $e->getMessage(), [
+                'tags' => $tags
+            ]);
         }
     }
 

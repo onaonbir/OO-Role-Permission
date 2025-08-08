@@ -14,10 +14,11 @@ use OnaOnbir\OORolePermission\Enums\OORoleStatus;
 use OnaOnbir\OORolePermission\Enums\OORoleType;
 use OnaOnbir\OORolePermission\Models\Traits\JsonCast;
 use OnaOnbir\OORolePermission\Support\CacheHelper;
+use OnaOnbir\OORolePermission\Traits\HasTimeConstraints;
 
 class Role extends Model
 {
-    use HasFactory;
+    use HasFactory, HasTimeConstraints;
 
     protected $fillable = [
         'name',
@@ -85,16 +86,7 @@ class Role extends Model
             ->withPivot('additional_permissions', 'expires_at', 'activated_at', 'timezone');
     }
 
-    // Time-based permission relations
-    public function timePermissions(): HasMany
-    {
-        return $this->hasMany(config('oo-role-permission.models.time_permission'), 'role_id');
-    }
-
-    public function activeTimePermissions(): HasMany
-    {
-        return $this->timePermissions()->active();
-    }
+    // Time-based permission relations now in HasTimeConstraints trait
 
     // Scopes for better query performance
     public function scopeActive(Builder $query): Builder

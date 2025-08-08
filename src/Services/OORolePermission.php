@@ -82,6 +82,21 @@ class OORolePermission
         if (config('oo-role-permission.time_permissions.enabled', true)) {
             $permissions = is_array($permission) ? $permission : [$permission];
             foreach ($permissions as $perm) {
+                // Priority 1: Check user-level time constraints first
+                if (method_exists($model, 'hasTimeConstraints') && $model->hasTimeConstraints()) {
+                    $userConstraints = $model->getTimeConstraintsForPermission($perm);
+                    if ($userConstraints->isNotEmpty()) {
+                        // If user has specific constraints for this permission, check them
+                        foreach ($userConstraints as $constraint) {
+                            if ($constraint->isValidAtTime(now())) {
+                                return true; // User constraint allows access
+                            }
+                        }
+                        // User has constraints but none are valid, still check role permissions as fallback
+                    }
+                }
+                
+                // Priority 2: Check role-based permissions via time validator
                 if ($this->timeValidator->validateUserPermission($model, $perm)) {
                     return true;
                 }

@@ -2,6 +2,36 @@
 
 All notable changes to `oo-role-permission` will be documented in this file.
 
+## [1.3.1] - 2025-08-08
+
+### 🐛 Fixed
+- **Critical**: Fixed `clearCacheForRole(): Argument #1 ($roleId) must be of type int, null given` error
+- **Polymorphic Relations**: Updated boot method to properly handle polymorphic relationships in TimePermission model
+- **Cache Operations**: Added error handling for cache operations that could fail
+- **Timezone Validation**: Added try-catch blocks for timezone operations to prevent crashes
+
+### 🔧 Enhanced
+- **Type Safety**: Added nullable type hints (`?int`, `?Carbon`) where appropriate
+- **Input Validation**: Added validation for day of week (0-6 range), permission strings, and array types
+- **Error Logging**: Improved error logging with contextual information
+- **Cache Helper**: Enhanced CacheHelper with better error handling and fallback mechanisms
+- **Method Safety**: Added `getRoleId()` helper method for safe role ID extraction from polymorphic relations
+
+### 🛠️ Technical Improvements
+- Added `clearGeneralTimeCache()` method for broader cache clearing
+- Improved `appliesToPermission()` method with better null/empty checks
+- Enhanced `isValidOnDay()` with input range validation
+- Updated `getCacheKey()` to handle special characters in permission names
+- Added comprehensive test class for verification
+
+### 💾 Cache Improvements
+- Cache operations now fail gracefully with proper logging
+- Added fallback mechanisms when cache tagging is not supported
+- Improved cache key generation with special character handling
+- Cache is now disabled by default in configuration (set to `false`)
+
+---
+
 ## [1.3.0] - 2025-08-08
 
 ### 🚀 Added

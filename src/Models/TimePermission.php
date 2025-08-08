@@ -6,7 +6,8 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Facades\Log;
 use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class TimePermission extends Model
@@ -14,7 +15,8 @@ class TimePermission extends Model
     use HasFactory;
 
     protected $fillable = [
-        'role_id',
+        'constraintable_type',
+        'constraintable_id',
         'additional_permissions',
         'start_time',
         'end_time',
@@ -39,10 +41,19 @@ class TimePermission extends Model
         return config('oo-role-permission.tables.time_permissions', 'oo_time_permissions');
     }
 
-    // Relations
-    public function role(): BelongsTo
+    // Polymorphic Relations
+    public function constraintable(): MorphTo
     {
-        return $this->belongsTo(config('oo-role-permission.models.role'), 'role_id');
+        return $this->morphTo('constraintable');
+    }
+
+    // Helper to get role ID safely
+    public function getRoleId(): ?int
+    {
+        if ($this->constraintable_type === config('oo-role-permission.models.role') && $this->constraintable_id) {
+            return (int) $this->constraintable_id;
+        }
+        return null;
     }
 
     // Scopes
@@ -83,25 +94,38 @@ class TimePermission extends Model
     // Validation methods
     public function isValidAtTime(Carbon $time): bool
     {
-        // Convert time to the constraint's timezone
-        $timeInConstraintTimezone = $time->copy()->setTimezone($this->timezone);
-        
-        // Check date range
-        if (!$this->isValidOnDate($timeInConstraintTimezone)) {
+        try {
+            // Use default timezone if not set
+            $timezone = $this->timezone ?: config('oo-role-permission.time_permissions.default_timezone', 'UTC');
+            
+            // Convert time to the constraint's timezone
+            $timeInConstraintTimezone = $time->copy()->setTimezone($timezone);
+            
+            // Check date range
+            if (!$this->isValidOnDate($timeInConstraintTimezone)) {
+                return false;
+            }
+
+            // Check day of week
+            if (!$this->isValidOnDay($timeInConstraintTimezone->dayOfWeek)) {
+                return false;
+            }
+
+            // Check time of day
+            if (!$this->isValidAtTimeOfDay($timeInConstraintTimezone)) {
+                return false;
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            // Log error and return false on timezone or other errors
+            Log::warning('TimePermission validation error: ' . $e->getMessage(), [
+                'time_permission_id' => $this->id,
+                'timezone' => $this->timezone,
+                'time' => $time->toISOString()
+            ]);
             return false;
         }
-
-        // Check day of week
-        if (!$this->isValidOnDay($timeInConstraintTimezone->dayOfWeek)) {
-            return false;
-        }
-
-        // Check time of day
-        if (!$this->isValidAtTimeOfDay($timeInConstraintTimezone)) {
-            return false;
-        }
-
-        return true;
     }
 
     public function isValidOnDate(Carbon $date): bool
@@ -123,15 +147,20 @@ class TimePermission extends Model
 
     public function isValidOnDay(int $dayOfWeek): bool
     {
+        // Validate input - dayOfWeek should be 0-6
+        if ($dayOfWeek < 0 || $dayOfWeek > 6) {
+            return false;
+        }
+
         // If no day constraints, allow all days
-        if (empty($this->days_of_week)) {
+        if (empty($this->days_of_week) || !is_array($this->days_of_week)) {
             return true;
         }
 
         // Convert Laravel's dayOfWeek (0=Sunday) to ISO format (1=Monday, 7=Sunday)
         $isoDayOfWeek = $dayOfWeek === 0 ? 7 : $dayOfWeek;
 
-        return in_array($isoDayOfWeek, $this->days_of_week);
+        return in_array($isoDayOfWeek, $this->days_of_week, true);
     }
 
     public function isValidAtTimeOfDay(Carbon $time): bool
@@ -159,13 +188,23 @@ class TimePermission extends Model
     // Helper methods
     public function appliesToPermission(string $permission): bool
     {
+        // Validate input
+        if (empty($permission)) {
+            return false;
+        }
+
         // If additional_permissions is null or empty, applies to all role permissions
-        if (empty($this->additional_permissions)) {
+        if (empty($this->additional_permissions) || !is_array($this->additional_permissions)) {
             return true;
         }
 
         // Check each permission in additional_permissions array
         foreach ($this->additional_permissions as $constraintPermission) {
+            // Skip empty or non-string permissions
+            if (empty($constraintPermission) || !is_string($constraintPermission)) {
+                continue;
+            }
+
             // Direct match
             if ($constraintPermission === $permission) {
                 return true;
@@ -174,7 +213,7 @@ class TimePermission extends Model
             // Wildcard match (e.g., "admin.*" matches "admin.users")
             if (str_ends_with($constraintPermission, '.*')) {
                 $prefix = rtrim(substr($constraintPermission, 0, -2), '.');
-                if (str_starts_with($permission, $prefix . '.')) {
+                if (!empty($prefix) && str_starts_with($permission, $prefix . '.')) {
                     return true;
                 }
             }
@@ -182,7 +221,7 @@ class TimePermission extends Model
             // Reverse wildcard (requested permission is wildcard)
             if (str_ends_with($permission, '.*')) {
                 $prefix = rtrim(substr($permission, 0, -2), '.');
-                if (str_starts_with($constraintPermission, $prefix . '.')) {
+                if (!empty($prefix) && str_starts_with($constraintPermission, $prefix . '.')) {
                     return true;
                 }
             }
@@ -201,28 +240,40 @@ class TimePermission extends Model
         $parts = [];
 
         // Permissions info
-        if (!empty($this->additional_permissions)) {
-            $permissions = implode(', ', $this->additional_permissions);
-            $parts[] = "Permissions: {$permissions}";
+        if (!empty($this->additional_permissions) && is_array($this->additional_permissions)) {
+            $validPermissions = array_filter($this->additional_permissions, fn($p) => !empty($p) && is_string($p));
+            if (!empty($validPermissions)) {
+                $permissions = implode(', ', $validPermissions);
+                $parts[] = "Permissions: {$permissions}";
+            } else {
+                $parts[] = "All role permissions";
+            }
         } else {
             $parts[] = "All role permissions";
         }
 
         // Date range
         if ($this->start_date || $this->end_date) {
-            $start = $this->start_date ? $this->start_date->format('d.m.Y') : '...';
-            $end = $this->end_date ? $this->end_date->format('d.m.Y') : '...';
-            $parts[] = "{$start} - {$end}";
+            try {
+                $start = $this->start_date ? $this->start_date->format('d.m.Y') : '...';
+                $end = $this->end_date ? $this->end_date->format('d.m.Y') : '...';
+                $parts[] = "{$start} - {$end}";
+            } catch (\Exception $e) {
+                $parts[] = "Date range: Invalid format";
+            }
         }
 
         // Days of week
-        if (!empty($this->days_of_week)) {
+        if (!empty($this->days_of_week) && is_array($this->days_of_week)) {
             $dayNames = [
                 1 => 'Pazartesi', 2 => 'Salı', 3 => 'Çarşamba', 
                 4 => 'Perşembe', 5 => 'Cuma', 6 => 'Cumartesi', 7 => 'Pazar'
             ];
-            $activeDays = array_map(fn($day) => $dayNames[$day], $this->days_of_week);
-            $parts[] = implode(', ', $activeDays);
+            $validDays = array_filter($this->days_of_week, fn($day) => is_int($day) && $day >= 1 && $day <= 7);
+            if (!empty($validDays)) {
+                $activeDays = array_map(fn($day) => $dayNames[$day] ?? 'Invalid day', $validDays);
+                $parts[] = implode(', ', $activeDays);
+            }
         }
 
         // Time range
@@ -233,27 +284,41 @@ class TimePermission extends Model
         }
 
         // Timezone
-        if ($this->timezone !== 'UTC') {
-            $parts[] = "({$this->timezone})";
+        $timezone = $this->timezone ?: 'UTC';
+        if ($timezone !== 'UTC') {
+            $parts[] = "({$timezone})";
         }
 
         return implode(' | ', $parts) ?: 'Her zaman aktif';
     }
 
     // Cache helpers
-    public function getCacheKey(string $permission, Carbon $time): string
+    public function getCacheKey(string $permission, ?Carbon $time = null): string
     {
+        $time = $time ?? Carbon::now();
         $timeKey = $time->format('Y-m-d_H'); // Hour-based caching
-        return "time_permission_{$this->id}_{$permission}_{$timeKey}";
+        $permissionKey = str_replace([':', '.', '*'], ['_', '_', 'wildcard'], $permission);
+        
+        return CacheHelper::key("time_permission_{$this->id}_{$permissionKey}_{$timeKey}");
     }
 
-    public static function clearCacheForRole(int $roleId): void
+    public static function clearCacheForRole(?int $roleId): void
+    {
+        if (!CacheHelper::isEnabled() || !$roleId) {
+            return;
+        }
+        
+        $cacheTags = ["time_permissions_role_{$roleId}"];
+        CacheHelper::flush($cacheTags);
+    }
+
+    public static function clearGeneralTimeCache(): void
     {
         if (!CacheHelper::isEnabled()) {
             return;
         }
         
-        $cacheTags = ["time_permissions_role_{$roleId}"];
+        $cacheTags = ['time_permissions', 'time_constraints'];
         CacheHelper::flush($cacheTags);
     }
 
@@ -263,11 +328,25 @@ class TimePermission extends Model
         parent::boot();
 
         static::saved(function ($timePermission) {
-            self::clearCacheForRole($timePermission->role_id);
+            // Clear role-specific cache if this constraint belongs to a role
+            $roleId = $timePermission->getRoleId();
+            if ($roleId) {
+                self::clearCacheForRole($roleId);
+            }
+            
+            // Also clear general time permission cache
+            self::clearGeneralTimeCache();
         });
 
         static::deleted(function ($timePermission) {
-            self::clearCacheForRole($timePermission->role_id);
+            // Clear role-specific cache if this constraint belongs to a role
+            $roleId = $timePermission->getRoleId();
+            if ($roleId) {
+                self::clearCacheForRole($roleId);
+            }
+            
+            // Also clear general time permission cache
+            self::clearGeneralTimeCache();
         });
     }
 }

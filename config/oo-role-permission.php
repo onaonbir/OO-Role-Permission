@@ -25,7 +25,7 @@ return [
     'time_permissions' => [
         'enabled' => env('OO_ROLE_PERMISSION_TIME_ENABLED', true),
         'default_timezone' => env('OO_ROLE_PERMISSION_DEFAULT_TIMEZONE', 'UTC'),
-        'auto_cleanup_expired' => env('OO_ROLE_PERMISSION_AUTO_CLEANUP', true),
+        'auto_cleanup_expired' => env('OO_ROLE_PERMISSION_AUTO_CLEANUP', false),
         'cleanup_schedule' => '0 2 * * *', // Every night at 02:00
         'cache_ttl' => env('OO_ROLE_PERMISSION_TIME_CACHE_TTL', 1800), // 30 minutes
     ],
