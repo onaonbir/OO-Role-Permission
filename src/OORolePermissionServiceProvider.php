@@ -5,6 +5,7 @@ namespace OnaOnbir\OORolePermission;
 use Illuminate\Support\ServiceProvider;
 use OnaOnbir\OORolePermission\Middlewares\OORoleOrPermissionMiddleware;
 use OnaOnbir\OORolePermission\Services\OORolePermission;
+use OnaOnbir\OORolePermission\Services\TimePermissionValidator;
 
 class OORolePermissionServiceProvider extends ServiceProvider
 {
@@ -29,7 +30,12 @@ class OORolePermissionServiceProvider extends ServiceProvider
 
     private function registerServices(): void
     {
-        // Bind the service as singleton for better performance
+        // Bind TimePermissionValidator as singleton
+        $this->app->singleton(TimePermissionValidator::class, function ($app) {
+            return new TimePermissionValidator();
+        });
+        
+        // Bind the main service as singleton for better performance
         $this->app->singleton(OORolePermission::class, function ($app) {
             return new OORolePermission();
         });

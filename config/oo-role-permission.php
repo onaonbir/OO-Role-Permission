@@ -5,17 +5,27 @@ return [
     'tables' => [
         'roles' => 'oo_roles',
         'role_models' => 'oo_role_models',
+        'time_permissions' => 'oo_time_permissions',
     ],
 
     'models' => [
         'role' => \OnaOnbir\OORolePermission\Models\Role::class,
         'role_model' => \OnaOnbir\OORolePermission\Models\RoleModel::class,
+        'time_permission' => \OnaOnbir\OORolePermission\Models\TimePermission::class,
     ],
 
     'cache' => [
-        'enabled' => env('OO_ROLE_PERMISSION_CACHE', true),
+        'enabled' => env('OO_ROLE_PERMISSION_CACHE', false),
         'ttl' => env('OO_ROLE_PERMISSION_CACHE_TTL', 3600),
         'key_prefix' => 'oo_rp:',
+    ],
+
+    'time_permissions' => [
+        'enabled' => env('OO_ROLE_PERMISSION_TIME_ENABLED', true),
+        'default_timezone' => env('OO_ROLE_PERMISSION_DEFAULT_TIMEZONE', 'UTC'),
+        'auto_cleanup_expired' => env('OO_ROLE_PERMISSION_AUTO_CLEANUP', true),
+        'cleanup_schedule' => '0 2 * * *', // Every night at 02:00
+        'cache_ttl' => env('OO_ROLE_PERMISSION_TIME_CACHE_TTL', 1800), // 30 minutes
     ],
 
     'permissions' => [

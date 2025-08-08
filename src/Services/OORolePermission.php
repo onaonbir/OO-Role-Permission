@@ -2,13 +2,22 @@
 
 namespace OnaOnbir\OORolePermission\Services;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
+use OnaOnbir\OORolePermission\Models\Role;
+use OnaOnbir\OORolePermission\Services\TimePermissionValidator;
 
 class OORolePermission
 {
+    protected TimePermissionValidator $timeValidator;
+
+    public function __construct()
+    {
+        $this->timeValidator = app(TimePermissionValidator::class);
+    }
     public function can(string|array $permission, string $guard = 'web'): bool
     {
         $user = Auth::guard($guard)->user();
@@ -43,6 +52,17 @@ class OORolePermission
 
     public function modelHasRole(Model $model, string|array $role): bool
     {
+        // If time permissions are enabled, use time-aware validation
+        if (config('oo-role-permission.time_permissions.enabled', true)) {
+            return $this->timeValidator->validateUserRole($model, $role);
+        }
+
+        // Fallback to basic validation
+        return $this->basicModelHasRole($model, $role);
+    }
+
+    private function basicModelHasRole(Model $model, string|array $role): bool
+    {
         // Eager load roles if not already loaded
         if (!$model->relationLoaded('roles')) {
             $model->load(['roles' => function ($query) {
@@ -56,6 +76,23 @@ class OORolePermission
     }
 
     public function modelHasPermission(Model $model, string|array $permission): bool
+    {
+        // If time permissions are enabled, use time-aware validation
+        if (config('oo-role-permission.time_permissions.enabled', true)) {
+            $permissions = is_array($permission) ? $permission : [$permission];
+            foreach ($permissions as $perm) {
+                if ($this->timeValidator->validateUserPermission($model, $perm)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Fallback to basic validation
+        return $this->basicModelHasPermission($model, $permission);
+    }
+
+    private function basicModelHasPermission(Model $model, string|array $permission): bool
     {
         // Eager load roles if not already loaded
         if (!$model->relationLoaded('roles')) {
@@ -114,6 +151,88 @@ class OORolePermission
         ]);
         
         $this->clearModelCache($model);
+    }
+
+    // Time-based methods
+    public function modelHasRoleAtTime(Model $model, string|array $role, Carbon $time = null): bool
+    {
+        return $this->timeValidator->validateUserRole($model, $role, $time);
+    }
+
+    public function modelHasPermissionAtTime(Model $model, string|array $permission, Carbon $time = null): bool
+    {
+        $permissions = is_array($permission) ? $permission : [$permission];
+        foreach ($permissions as $perm) {
+            if ($this->timeValidator->validateUserPermission($model, $perm, $time)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public function assignTemporaryRole(Model $model, string $roleName, Carbon $expiresAt, array $additionalPermissions = [], string $timezone = null): void
+    {
+        $this->validateRoleAssignment($roleName);
+        
+        $roleModel = config('oo-role-permission.models.role');
+        $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
+        
+        $timezone = $timezone ?: $this->timeValidator->getUserTimezone($model);
+        
+        $role->createTemporaryAssignment($model, $expiresAt, $additionalPermissions, $timezone);
+        
+        $this->clearModelCache($model);
+    }
+
+    public function getUserTimeConstraints(Model $model): \Illuminate\Support\Collection
+    {
+        return $this->timeValidator->getUserTimeConstraints($model);
+    }
+
+    public function willUserHavePermissionAt(Model $model, string $permission, Carbon $futureTime): bool
+    {
+        return $this->timeValidator->willUserHavePermissionAt($model, $permission, $futureTime);
+    }
+
+    public function getNextPermissionChange(Model $model, string $permission): ?Carbon
+    {
+        return $this->timeValidator->getNextPermissionChange($model, $permission);
+    }
+
+    public function cleanupExpiredRoles(): int
+    {
+        return $this->timeValidator->cleanupExpiredAssignments();
+    }
+
+    public function getRoleTimeConstraints(string $roleName): \Illuminate\Support\Collection
+    {
+        $roleModel = config('oo-role-permission.models.role');
+        $role = $roleModel::where('name', $roleName)->with('timePermissions')->first();
+        
+        if (!$role) {
+            return collect();
+        }
+        
+        return $role->timePermissions->map(function ($timePermission) {
+            return [
+                'permission' => $timePermission->permission_key ?: 'All permissions',
+                'schedule' => $timePermission->getReadableSchedule(),
+                'timezone' => $timePermission->timezone,
+                'is_active' => $timePermission->isValidAtTime(now())
+            ];
+        });
+    }
+
+    public function isRoleActiveAtTime(string $roleName, Carbon $time = null): bool
+    {
+        $roleModel = config('oo-role-permission.models.role');
+        $role = $roleModel::where('name', $roleName)->with('timePermissions')->first();
+        
+        if (!$role) {
+            return false;
+        }
+        
+        return $this->timeValidator->validateRoleAtTime($role, $time);
     }
 
     public function updateRolePermissionsForModel(Model $model, string $roleName, array $additionalPermissions = []): void

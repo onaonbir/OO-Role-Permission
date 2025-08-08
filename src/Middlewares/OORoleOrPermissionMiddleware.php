@@ -39,7 +39,7 @@ class OORoleOrPermissionMiddleware
                 'route' => $request->route()?->getName(),
                 'url' => $request->url(),
             ]);
-            
+
             return $this->handleUnauthorized($request);
         }
 
@@ -60,7 +60,7 @@ class OORoleOrPermissionMiddleware
 
         foreach (explode(';', $parameters) as $group) {
             $group = trim($group);
-            
+
             if (str_starts_with($group, 'roles=')) {
                 $value = trim(substr($group, 6));
                 $roles = strlen($value) > 0 ? explode('|', $value) : [];
@@ -78,7 +78,7 @@ class OORoleOrPermissionMiddleware
     /**
      * Handle unauthenticated user
      */
-    protected function handleUnauthenticated(Request $request): Response
+    protected function handleUnauthenticated(Request $request)
     {
         if ($request->expectsJson()) {
             return response()->json([
@@ -93,7 +93,7 @@ class OORoleOrPermissionMiddleware
     /**
      * Handle unauthorized access
      */
-    protected function handleUnauthorized(Request $request): Response
+    protected function handleUnauthorized(Request $request)
     {
         if ($request->expectsJson()) {
             return response()->json([
