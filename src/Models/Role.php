@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use OnaOnbir\OORolePermission\Enums\OORoleStatus;
 use OnaOnbir\OORolePermission\Enums\OORoleType;
 use OnaOnbir\OORolePermission\Models\Traits\JsonCast;
+use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class Role extends Model
 {
@@ -51,11 +52,25 @@ class Role extends Model
 
         // Clear cache when role is modified
         static::saved(function ($role) {
-            Cache::tags(['oo_rp_roles'])->flush();
+            if (CacheHelper::isEnabled()) {
+                CacheHelper::flush(['oo_rp_roles']);
+            }
+            
+            // Clear time permission cache if TimePermission exists
+            if (class_exists('\OnaOnbir\OORolePermission\Models\TimePermission')) {
+                \OnaOnbir\OORolePermission\Models\TimePermission::clearCacheForRole($role->id);
+            }
         });
 
         static::deleted(function ($role) {
-            Cache::tags(['oo_rp_roles'])->flush();
+            if (CacheHelper::isEnabled()) {
+                CacheHelper::flush(['oo_rp_roles']);
+            }
+            
+            // Clear time permission cache if TimePermission exists
+            if (class_exists('\OnaOnbir\OORolePermission\Models\TimePermission')) {
+                \OnaOnbir\OORolePermission\Models\TimePermission::clearCacheForRole($role->id);
+            }
         });
     }
 
@@ -67,7 +82,18 @@ class Role extends Model
     public function users()
     {
         return $this->morphedByMany(User::class, 'model', 'oo_role_models', 'role_id', 'model_id')
-            ->withPivot('additional_permissions');
+            ->withPivot('additional_permissions', 'expires_at', 'activated_at', 'timezone');
+    }
+
+    // Time-based permission relations
+    public function timePermissions(): HasMany
+    {
+        return $this->hasMany(config('oo-role-permission.models.time_permission'), 'role_id');
+    }
+
+    public function activeTimePermissions(): HasMany
+    {
+        return $this->timePermissions()->active();
     }
 
     // Scopes for better query performance
@@ -126,7 +152,44 @@ class Role extends Model
     public function hasPermission(string $permission): bool
     {
         $permissions = $this->permissions ?? [];
-        return in_array($permission, $permissions, true) || in_array('*', $permissions, true);
+        
+        // Use the same wildcard logic as the main service
+        return $this->checkPermissionWithWildcard($permissions, $permission);
+    }
+    
+    private function checkPermissionWithWildcard(array $permissions, string $permission): bool
+    {
+        // Direct match
+        if (in_array($permission, $permissions, true)) {
+            return true;
+        }
+        
+        // Universal wildcard
+        if (in_array('*', $permissions, true)) {
+            return true;
+        }
+
+        // Wildcard match: defined permission has wildcard (e.g., project.budget.*)
+        foreach ($permissions as $perm) {
+            if (str_ends_with($perm, '.*')) {
+                $wildcard = rtrim(substr($perm, 0, -2), '.');
+                if (str_starts_with($permission, $wildcard.'.')) {
+                    return true;
+                }
+            }
+        }
+
+        // Reverse wildcard match: requested permission is a wildcard
+        if (str_ends_with($permission, '.*')) {
+            $wildcard = rtrim(substr($permission, 0, -2), '.');
+            foreach ($permissions as $perm) {
+                if (str_starts_with($perm, $wildcard.'.')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // Time-based helper methods
@@ -159,32 +222,21 @@ class Role extends Model
             return true;
         }
 
-        // Check if any time permission allows this permission at this time
-        $applicableTimePermissions = $this->timePermissions()
-            ->active()
-            ->forPermission($permission)
-            ->get();
-
-        // If no specific time constraints for this permission, check role-level constraints
-        if ($applicableTimePermissions->isEmpty()) {
-            $applicableTimePermissions = $this->timePermissions()
-                ->active()
-                ->whereNull('permission_key') // Role-level constraints
-                ->get();
-        }
-
-        // If still no constraints, allow (shouldn't happen if hasTimeConstraints() is true)
-        if ($applicableTimePermissions->isEmpty()) {
-            return true;
-        }
-
-        // Check if any applicable constraint allows access at this time
-        foreach ($applicableTimePermissions as $timePermission) {
-            if ($timePermission->isValidAtTime($time)) {
-                return true;
+        // Get all active time permissions for this role
+        $timePermissions = $this->timePermissions()->active()->get();
+        
+        // Check each time permission to see if it applies to this permission
+        foreach ($timePermissions as $timePermission) {
+            // Check if this time constraint applies to the requested permission
+            if ($timePermission->appliesToPermission($permission)) {
+                // If it applies and is valid at this time, allow access
+                if ($timePermission->isValidAtTime($time)) {
+                    return true;
+                }
             }
         }
-
+        
+        // If we have time constraints but none allow access at this time, deny
         return false;
     }
 
@@ -216,8 +268,12 @@ class Role extends Model
         $summaries = [];
 
         foreach ($constraints as $constraint) {
+            $permissions = !empty($constraint->additional_permissions) 
+                ? implode(', ', $constraint->additional_permissions)
+                : 'Tüm rol izinleri';
+                
             $summaries[] = [
-                'permission' => $constraint->permission_key ?: 'Tüm izinler',
+                'permissions' => $permissions,
                 'schedule' => $constraint->getReadableSchedule(),
                 'timezone' => $constraint->timezone
             ];

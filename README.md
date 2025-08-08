@@ -1,15 +1,16 @@
 # 🔐 OORolePermission — Production-Ready Role & Permission System for Laravel
 
 **OORolePermission** is a high-performance, dynamic, model-based, and polymorphic role & permission management system for Laravel.  
-It supports structured role definitions, JSON-based permissions, wildcard matching, scoped checks, caching, and custom service-driven logic.
+It supports structured role definitions, JSON-based permissions, wildcard matching, scoped checks, **time-based constraints**, caching, and custom service-driven logic.
 
-## ✨ **v1.1.0 Features**
+## ✨ **v1.2.0 Features**
 
 - 🚀 **High Performance**: Built-in caching and N+1 query prevention
+- ⏰ **Time-based Permissions**: Daily, weekly, seasonal, and temporary access control
 - 🔒 **Production Ready**: Comprehensive error handling and logging
 - 📊 **Database Optimized**: Smart indexes and constraints
 - 🎯 **Type Safe**: Strict type hints throughout
-- 🔄 **Backward Compatible**: No breaking changes from v1.0.x
+- 🔄 **Backward Compatible**: No breaking changes from v1.x.x
 
 ---
 
@@ -42,6 +43,122 @@ OO_ROLE_PERMISSION_CACHE=true
 
 # Cache TTL in seconds (default: 3600 = 1 hour)
 OO_ROLE_PERMISSION_CACHE_TTL=3600
+
+# Time-based permissions (default: true)
+OO_ROLE_PERMISSION_TIME_ENABLED=true
+
+# Default timezone (default: UTC)
+OO_ROLE_PERMISSION_DEFAULT_TIMEZONE=Europe/Istanbul
+
+# Time permission cache TTL (default: 1800 = 30 minutes)
+OO_ROLE_PERMISSION_TIME_CACHE_TTL=1800
+```
+
+---
+
+## ⏰ **Time-based Permissions**
+
+### **Business Hours Restriction**
+```php
+// Admin sadece iş saatlerinde aktif
+$adminRole = Role::create([
+    'name' => 'business_admin',
+    'permissions' => ['admin.*']
+]);
+
+$adminRole->timePermissions()->create([
+    'additional_permissions' => null, // Tüm rol izinleri (default)
+    'start_time' => '09:00:00',
+    'end_time' => '17:00:00',
+    'days_of_week' => [1, 2, 3, 4, 5], // Pazartesi-Cuma
+    'timezone' => 'Europe/Istanbul'
+]);
+
+$user->assignRole('business_admin');
+
+// Kullanım - sadece iş saatlerinde true döner
+$user->hasPermission('admin.access');
+```
+
+### **Specific Permission Time Constraints**
+```php
+// Sadece belirli izinlere zaman kısıtı
+$role->timePermissions()->create([
+    'additional_permissions' => ['user.delete', 'admin.settings'], // Sadece bunlara uygulanır
+    'start_time' => '09:00:00',
+    'end_time' => '17:00:00',
+    'timezone' => 'Europe/Istanbul'
+]);
+
+// Wildcard permissions için
+$role->timePermissions()->create([
+    'additional_permissions' => ['admin.*', 'user.manage.*'], // Wildcard desteği
+    'days_of_week' => [1, 2, 3, 4, 5],
+    'timezone' => 'Europe/Istanbul'
+]);
+```
+
+### **Temporary Roles**
+```php
+// 1 haftalık geçici moderaötör yetkisi
+$user->assignTemporaryRole('moderator', now()->addWeek());
+
+// 3 ay süreyle project lead + extra permissions
+$user->assignTemporaryRole('project_lead', now()->addMonths(3), [
+    'additional_permissions' => ['project.budget.approve']
+]);
+
+// Kontrol
+$user->hasRole('moderator'); // 1 hafta sonra otomatik false
+```
+
+### **Weekend-only Access**
+```php
+$weekendRole = Role::create([
+    'name' => 'weekend_support',
+    'permissions' => ['support.tickets']
+]);
+
+$weekendRole->timePermissions()->create([
+    'days_of_week' => [6, 7], // Cumartesi, Pazar
+    'timezone' => 'Europe/Istanbul'
+]);
+
+$user->assignRole('weekend_support');
+// Sadece hafta sonu true döner
+```
+
+### **Seasonal Permissions**
+```php
+// Yılbaşı kampanyası yöneticisi
+$campaignRole = Role::create([
+    'name' => 'holiday_campaign_manager',
+    'permissions' => ['campaign.manage', 'discount.create']
+]);
+
+$campaignRole->timePermissions()->create([
+    'start_date' => '2025-12-01',
+    'end_date' => '2025-12-31',
+    'timezone' => 'Europe/Istanbul'
+]);
+```
+
+### **Advanced Time Checks**
+```php
+// Belirli zamandaki izinleri kontrol et
+$user->hasPermissionAtTime('admin.access', Carbon::parse('2025-12-25 15:00'));
+
+// Gelecekteki izinleri öngör
+$user->willHavePermissionAt('admin.access', now()->addDays(7));
+
+// Sonraki değişiklik zamanını öğren
+$nextChange = $user->getNextPermissionChange('admin.access');
+
+// Kullanıcının tüm zaman kısıtlarını görüntüle
+$constraints = $user->getTimeConstraints();
+
+// Süresi dolan rolleri temizle
+$expiredCount = oo_rp()->cleanupExpiredRoles();
 ```
 
 ---
@@ -101,7 +218,27 @@ foreach ($users as $user) {
 | `model_type`             | Target model (polymorphic)               |
 | `model_id`               | UUID or integer, depending on your setup |
 | `additional_permissions` | JSON array of custom scoped permissions  |
+| `expires_at`             | **NEW**: Role assignment expiration      |
+| `activated_at`           | **NEW**: Role assignment activation      |
+| `timezone`               | **NEW**: User timezone for time checks   |
 | `timestamps`             | Created/Updated at                       |
+
+### `oo_time_permissions` **NEW**
+
+| Column          | Description                           |
+| --------------- | ------------------------------------- |
+| `id`            | Primary key                           |
+| `role_id`       | Foreign key to `oo_roles`             |
+| `permission_key`| Specific permission (NULL = all)      |
+| `start_time`    | Daily start time (e.g., 09:00:00)    |
+| `end_time`      | Daily end time (e.g., 17:00:00)      |
+| `start_date`    | Date range start (e.g., 2025-01-01)  |
+| `end_date`      | Date range end (e.g., 2025-12-31)    |
+| `timezone`      | Timezone (e.g., Europe/Istanbul)     |
+| `days_of_week`  | JSON array [1,2,3,4,5] (Mon-Fri)     |
+| `is_active`     | Boolean: constraint active            |
+| `description`   | Human-readable description            |
+| `timestamps`    | Created/Updated at                    |
 
 ---
 

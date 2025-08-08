@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Cache;
+use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class TimePermission extends Model
 {
@@ -15,7 +15,7 @@ class TimePermission extends Model
 
     protected $fillable = [
         'role_id',
-        'permission_key',
+        'additional_permissions',
         'start_time',
         'end_time',
         'start_date',
@@ -27,6 +27,7 @@ class TimePermission extends Model
     ];
 
     protected $casts = [
+        'additional_permissions' => 'array',
         'days_of_week' => 'array',
         'is_active' => 'boolean',
         'start_date' => 'date',
@@ -53,8 +54,15 @@ class TimePermission extends Model
     public function scopeForPermission(Builder $query, string $permission): Builder
     {
         return $query->where(function ($q) use ($permission) {
-            $q->whereNull('permission_key') // Applies to all permissions
-              ->orWhere('permission_key', $permission);
+            // If additional_permissions is null/empty, applies to all role permissions
+            $q->whereNull('additional_permissions')
+              ->orWhereJsonLength('additional_permissions', 0)
+              // OR check if permission matches any in the additional_permissions array
+              ->orWhere(function ($subQuery) use ($permission) {
+                  $subQuery->whereJsonContains('additional_permissions', $permission)
+                           // Also check for wildcard matches in JSON
+                           ->orWhereRaw('JSON_SEARCH(additional_permissions, "one", ?) IS NOT NULL', ["%{$permission}%"]);
+              });
         });
     }
 
@@ -151,20 +159,38 @@ class TimePermission extends Model
     // Helper methods
     public function appliesToPermission(string $permission): bool
     {
-        // If permission_key is null, applies to all permissions
-        if ($this->permission_key === null) {
+        // If additional_permissions is null or empty, applies to all role permissions
+        if (empty($this->additional_permissions)) {
             return true;
         }
 
-        // Exact match
-        if ($this->permission_key === $permission) {
-            return true;
-        }
+        // Check each permission in additional_permissions array
+        foreach ($this->additional_permissions as $constraintPermission) {
+            // Direct match
+            if ($constraintPermission === $permission) {
+                return true;
+            }
 
-        // Wildcard match (e.g., "admin.*" matches "admin.users")
-        if (str_ends_with($this->permission_key, '.*')) {
-            $prefix = rtrim(substr($this->permission_key, 0, -2), '.');
-            return str_starts_with($permission, $prefix . '.');
+            // Wildcard match (e.g., "admin.*" matches "admin.users")
+            if (str_ends_with($constraintPermission, '.*')) {
+                $prefix = rtrim(substr($constraintPermission, 0, -2), '.');
+                if (str_starts_with($permission, $prefix . '.')) {
+                    return true;
+                }
+            }
+
+            // Reverse wildcard (requested permission is wildcard)
+            if (str_ends_with($permission, '.*')) {
+                $prefix = rtrim(substr($permission, 0, -2), '.');
+                if (str_starts_with($constraintPermission, $prefix . '.')) {
+                    return true;
+                }
+            }
+
+            // Universal wildcard
+            if ($constraintPermission === '*') {
+                return true;
+            }
         }
 
         return false;
@@ -173,6 +199,14 @@ class TimePermission extends Model
     public function getReadableSchedule(): string
     {
         $parts = [];
+
+        // Permissions info
+        if (!empty($this->additional_permissions)) {
+            $permissions = implode(', ', $this->additional_permissions);
+            $parts[] = "Permissions: {$permissions}";
+        } else {
+            $parts[] = "All role permissions";
+        }
 
         // Date range
         if ($this->start_date || $this->end_date) {
@@ -215,7 +249,12 @@ class TimePermission extends Model
 
     public static function clearCacheForRole(int $roleId): void
     {
-        Cache::tags(["time_permissions_role_{$roleId}"])->flush();
+        if (!CacheHelper::isEnabled()) {
+            return;
+        }
+        
+        $cacheTags = ["time_permissions_role_{$roleId}"];
+        CacheHelper::flush($cacheTags);
     }
 
     // Boot method for cache management

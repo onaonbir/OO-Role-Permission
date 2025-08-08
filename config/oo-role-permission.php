@@ -15,9 +15,11 @@ return [
     ],
 
     'cache' => [
-        'enabled' => env('OO_ROLE_PERMISSION_CACHE', false),
+        'enabled' => env('OO_ROLE_PERMISSION_CACHE', false), // Default false for testing
         'ttl' => env('OO_ROLE_PERMISSION_CACHE_TTL', 3600),
         'key_prefix' => 'oo_rp:',
+        'supports_tagging' => null, // auto-detect
+        'fallback_on_error' => true, // clear all cache if tagging fails
     ],
 
     'time_permissions' => [

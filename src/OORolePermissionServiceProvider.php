@@ -37,7 +37,7 @@ class OORolePermissionServiceProvider extends ServiceProvider
         
         // Bind the main service as singleton for better performance
         $this->app->singleton(OORolePermission::class, function ($app) {
-            return new OORolePermission();
+            return new OORolePermission($app->make(TimePermissionValidator::class));
         });
         
         // Register helper alias

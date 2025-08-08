@@ -9,14 +9,15 @@ use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use OnaOnbir\OORolePermission\Models\Role;
 use OnaOnbir\OORolePermission\Services\TimePermissionValidator;
+use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class OORolePermission
 {
     protected TimePermissionValidator $timeValidator;
 
-    public function __construct()
+    public function __construct(TimePermissionValidator $timeValidator = null)
     {
-        $this->timeValidator = app(TimePermissionValidator::class);
+        $this->timeValidator = $timeValidator ?: app(TimePermissionValidator::class);
     }
     public function can(string|array $permission, string $guard = 'web'): bool
     {
@@ -104,11 +105,13 @@ class OORolePermission
         $permissions = is_array($permission) ? $permission : [$permission];
         
         // Check cache first if enabled
-        if (config('oo-role-permission.cache.enabled', true)) {
+        if (CacheHelper::isEnabled()) {
             $cacheKey = $this->getPermissionCacheKey($model, $permissions);
-            return Cache::remember($cacheKey, config('oo-role-permission.cache.ttl', 3600), function () use ($model, $permissions) {
+            $cacheTags = ["user_permissions_{$model->id}"];
+            
+            return CacheHelper::remember($cacheKey, config('oo-role-permission.cache.ttl', 3600), function () use ($model, $permissions) {
                 return $this->checkModelPermissions($model, $permissions);
-            });
+            }, $cacheTags);
         }
 
         return $this->checkModelPermissions($model, $permissions);
@@ -214,8 +217,12 @@ class OORolePermission
         }
         
         return $role->timePermissions->map(function ($timePermission) {
+            $permissions = !empty($timePermission->additional_permissions)
+                ? implode(', ', $timePermission->additional_permissions)
+                : 'All role permissions';
+                
             return [
-                'permission' => $timePermission->permission_key ?: 'All permissions',
+                'permissions' => $permissions,
                 'schedule' => $timePermission->getReadableSchedule(),
                 'timezone' => $timePermission->timezone,
                 'is_active' => $timePermission->isValidAtTime(now())
@@ -270,11 +277,13 @@ class OORolePermission
 
     private function clearModelCache(Model $model): void
     {
-        if (config('oo-role-permission.cache.enabled', true)) {
-            $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
-            $pattern = "{$prefix}user_{$model->id}_permissions_*";
-            Cache::forget($pattern);
+        if (!CacheHelper::isEnabled()) {
+            return;
         }
+        
+        // Clear cache using our helper
+        $cacheTags = ["user_permissions_{$model->id}"];
+        CacheHelper::flush($cacheTags);
     }
 
     private function checkPermission(array $permissions, string $permission): bool

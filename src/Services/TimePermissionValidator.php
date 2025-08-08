@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use OnaOnbir\OORolePermission\Models\Role;
 use OnaOnbir\OORolePermission\Models\TimePermission;
+use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class TimePermissionValidator
 {
@@ -33,10 +34,11 @@ class TimePermissionValidator
 
         $time = $time ?: now();
         $cacheKey = $this->getUserPermissionCacheKey($user, $permission, $time);
+        $cacheTags = ["time_user_permissions_{$user->id}"];
 
-        return Cache::remember($cacheKey, $this->cacheTtl, function () use ($user, $permission, $time) {
+        return CacheHelper::remember($cacheKey, $this->cacheTtl, function () use ($user, $permission, $time) {
             return $this->performUserPermissionCheck($user, $permission, $time);
-        });
+        }, $cacheTags);
     }
 
     /**
@@ -157,10 +159,14 @@ class TimePermissionValidator
 
         foreach ($user->roles as $role) {
             foreach ($role->timePermissions as $timePermission) {
+                $permissions = !empty($timePermission->additional_permissions)
+                    ? implode(', ', $timePermission->additional_permissions)
+                    : 'All role permissions';
+                    
                 $constraints->push([
                     'role' => $role->name,
                     'role_readable' => $role->readable_name,
-                    'permission' => $timePermission->permission_key ?: 'All permissions',
+                    'permissions' => $permissions,
                     'schedule' => $timePermission->getReadableSchedule(),
                     'timezone' => $timePermission->timezone,
                     'is_active' => $timePermission->isValidAtTime(now())
