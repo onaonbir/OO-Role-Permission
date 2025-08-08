@@ -46,9 +46,9 @@ trait HasTimeConstraints
     public function addPermissionTimeConstraint(array $permissions, array $timeRules): TimePermission
     {
         $constraint = array_merge($timeRules, [
-            'additional_permissions' => $permissions
+            'additional_permissions' => $permissions,
         ]);
-        
+
         return $this->addTimeConstraint($constraint);
     }
 
@@ -62,9 +62,9 @@ trait HasTimeConstraints
             'start_date' => now()->toDateString(),
             'end_date' => $expiresAt->toDateString(),
             'timezone' => $options['timezone'] ?? config('oo-role-permission.time_permissions.default_timezone', 'UTC'),
-            'description' => $options['description'] ?? 'Temporary permission access'
+            'description' => $options['description'] ?? 'Temporary permission access',
         ]);
-        
+
         return $this->addTimeConstraint($constraint);
     }
 
@@ -84,13 +84,13 @@ trait HasTimeConstraints
     /**
      * Check if model has permission at specific time (considering time constraints)
      */
-    public function hasPermissionAtTime(string $permission, Carbon $time = null): bool
+    public function hasPermissionAtTime(string $permission, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
-        
+
         // Get constraints that apply to this permission
         $constraints = $this->getTimeConstraintsForPermission($permission);
-        
+
         // If no time constraints, check base permission (for Users with roles)
         if ($constraints->isEmpty()) {
             // For User models, check role permissions
@@ -101,16 +101,17 @@ trait HasTimeConstraints
             if (method_exists($this, 'hasPermission')) {
                 return $this->hasPermission($permission);
             }
+
             return false;
         }
-        
+
         // Check if any constraint allows access at this time
         foreach ($constraints as $constraint) {
             if ($constraint->isValidAtTime($time)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -119,32 +120,32 @@ trait HasTimeConstraints
      */
     public function getTimeConstraintsSummary(): array
     {
-        if (!$this->hasTimeConstraints()) {
+        if (! $this->hasTimeConstraints()) {
             return [
-                'type' => 'unrestricted', 
-                'description' => 'No time constraints'
+                'type' => 'unrestricted',
+                'description' => 'No time constraints',
             ];
         }
-        
+
         $constraints = $this->timePermissions()->active()->get();
         $summaries = [];
-        
+
         foreach ($constraints as $constraint) {
-            $permissions = !empty($constraint->additional_permissions)
+            $permissions = ! empty($constraint->additional_permissions)
                 ? implode(', ', $constraint->additional_permissions)
                 : 'All permissions';
-                
+
             $summaries[] = [
                 'permissions' => $permissions,
                 'schedule' => $constraint->getReadableSchedule(),
                 'timezone' => $constraint->timezone,
-                'is_active' => $constraint->isValidAtTime(now())
+                'is_active' => $constraint->isValidAtTime(now()),
             ];
         }
-        
+
         return [
             'type' => 'time_restricted',
-            'constraints' => $summaries
+            'constraints' => $summaries,
         ];
     }
 
@@ -156,10 +157,10 @@ trait HasTimeConstraints
         $expired = $this->timePermissions()
             ->where('end_date', '<', now()->toDateString())
             ->whereNotNull('end_date');
-            
+
         $count = $expired->count();
         $expired->delete();
-        
+
         return $count;
     }
 }

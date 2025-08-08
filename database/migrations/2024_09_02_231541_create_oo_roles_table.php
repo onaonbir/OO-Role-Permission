@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('status')->default('active')->nullable();
             $table->json('attributes')->nullable();
             $table->timestamps();
-            
+
             // Performance indexes
             $table->index(['name', 'status']);
             $table->index('status');
@@ -38,11 +38,11 @@ return new class extends Migration
             $table->string('model_id');
             $table->json('additional_permissions')->nullable();
             $table->timestamps();
-            
+
             // Performance indexes
             $table->index(['model_type', 'model_id']);
             $table->index(['role_id', 'model_type']);
-            
+
             // Prevent duplicate role assignments
             $table->unique(['role_id', 'model_type', 'model_id'], 'unique_role_model');
         });

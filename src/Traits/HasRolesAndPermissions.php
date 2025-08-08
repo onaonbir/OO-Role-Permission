@@ -4,12 +4,10 @@ namespace OnaOnbir\OORolePermission\Traits;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
-use OnaOnbir\OORolePermission\Traits\HasTimeConstraints;
 
 trait HasRolesAndPermissions
 {
     use HasTimeConstraints; // Add time constraints support for users
-
 
     public function roles(): MorphToMany
     {
@@ -40,7 +38,7 @@ trait HasRolesAndPermissions
     public function hasRole(string|array $role): bool
     {
         // Eager load roles if not already loaded to prevent N+1
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles' => function ($query) {
                 $query->where('status', 'active');
             }]);
@@ -52,14 +50,14 @@ trait HasRolesAndPermissions
     public function hasPermission(string|array $permission): bool
     {
         // Eager load roles if not already loaded to prevent N+1
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles' => function ($query) {
                 $query->where('status', 'active');
             }]);
         }
-        
+
         $permissions = is_array($permission) ? $permission : [$permission];
-        
+
         foreach ($permissions as $perm) {
             // Priority 1: Check user-level time constraints first
             if ($this->hasTimeConstraints()) {
@@ -74,13 +72,13 @@ trait HasRolesAndPermissions
                     // User has constraints but none are valid, still check role permissions as fallback
                 }
             }
-            
+
             // Priority 2: Check role-based permissions
             if (oo_rp()->modelHasPermission($this, $perm)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -95,33 +93,34 @@ trait HasRolesAndPermissions
     public function hasSubPermission(string $key): bool
     {
         trigger_error('hasSubPermission is deprecated, use hasPermission instead', E_USER_DEPRECATED);
+
         return $this->hasPermission($key);
     }
 
     // Time-based methods
-    public function assignTemporaryRole(string $roleName, Carbon $expiresAt, array $additionalPermissions = [], string $timezone = null): void
+    public function assignTemporaryRole(string $roleName, Carbon $expiresAt, array $additionalPermissions = [], ?string $timezone = null): void
     {
         oo_rp()->assignTemporaryRole($this, $roleName, $expiresAt, $additionalPermissions, $timezone);
     }
 
-    public function hasRoleAtTime(string|array $role, Carbon $time = null): bool
+    public function hasRoleAtTime(string|array $role, ?Carbon $time = null): bool
     {
         return oo_rp()->modelHasRoleAtTime($this, $role, $time);
     }
 
-    public function hasPermissionAtTime(string|array $permission, Carbon $time = null): bool
+    public function hasPermissionAtTime(string|array $permission, ?Carbon $time = null): bool
     {
         return oo_rp()->modelHasPermissionAtTime($this, $permission, $time);
     }
 
-    public function getActiveRoles(Carbon $time = null): \Illuminate\Support\Collection
+    public function getActiveRoles(?Carbon $time = null): \Illuminate\Support\Collection
     {
         $time = $time ?: now();
 
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles' => function ($query) {
                 $query->where('status', 'active')
-                      ->with('timePermissions');
+                    ->with('timePermissions');
             }]);
         }
 
@@ -142,7 +141,7 @@ trait HasRolesAndPermissions
 
     public function getExpiredRoles(): \Illuminate\Support\Collection
     {
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -181,7 +180,7 @@ trait HasRolesAndPermissions
 
     public function hasAnyTimeConstraints(): bool
     {
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles.timePermissions']);
         }
 
@@ -241,13 +240,13 @@ trait HasRolesAndPermissions
             foreach ($userConstraints['constraints'] as $constraint) {
                 $constraints->push(array_merge($constraint, [
                     'level' => 'user',
-                    'source' => 'User Direct'
+                    'source' => 'User Direct',
                 ]));
             }
         }
 
         // Role-level constraints
-        if (!$this->relationLoaded('roles')) {
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles.timePermissions']);
         }
 
@@ -257,7 +256,7 @@ trait HasRolesAndPermissions
                 foreach ($roleConstraints['constraints'] as $constraint) {
                     $constraints->push(array_merge($constraint, [
                         'level' => 'role',
-                        'source' => "Role: {$role->name}"
+                        'source' => "Role: {$role->name}",
                     ]));
                 }
             }
@@ -268,93 +267,94 @@ trait HasRolesAndPermissions
 
     public function hasPermissionWithPriority(string $permission): array
     {
-    $result = [
-    'has_permission' => false,
-    'source' => null,
-    'level' => null,
-    'time_valid' => null
-    ];
-    
-    // Priority 1: User-level time constraints
-    if ($this->hasTimeConstraints()) {
-    $userConstraints = $this->getTimeConstraintsForPermission($permission);
-    if ($userConstraints->isNotEmpty()) {
-    foreach ($userConstraints as $constraint) {
-    if ($constraint->isValidAtTime(now())) {
-    $result = [
-    'has_permission' => true,
-    'source' => 'User Time Constraint',
-    'level' => 'user',
-    'time_valid' => true
-    ];
-    break;
-    }
-    }
-    // If user has constraints but none are valid, check role permissions
-    if (!$result['has_permission']) {
-    // Still check role permissions as fallback
-    $hasRolePermission = $this->checkRolePermissionAtTime($permission);
-    if ($hasRolePermission) {
-    $result = [
-        'has_permission' => true,
-            'source' => 'Role Permission (User constraints not valid)',
-                'level' => 'role',
-                'time_valid' => true
-                ];
-                } else {
-                    $result = [
-                        'has_permission' => false,
-                        'source' => 'User Time Constraint',
-                    'level' => 'user',
-                    'time_valid' => false
-            ];
+        $result = [
+            'has_permission' => false,
+            'source' => null,
+            'level' => null,
+            'time_valid' => null,
+        ];
+
+        // Priority 1: User-level time constraints
+        if ($this->hasTimeConstraints()) {
+            $userConstraints = $this->getTimeConstraintsForPermission($permission);
+            if ($userConstraints->isNotEmpty()) {
+                foreach ($userConstraints as $constraint) {
+                    if ($constraint->isValidAtTime(now())) {
+                        $result = [
+                            'has_permission' => true,
+                            'source' => 'User Time Constraint',
+                            'level' => 'user',
+                            'time_valid' => true,
+                        ];
+                        break;
+                    }
+                }
+                // If user has constraints but none are valid, check role permissions
+                if (! $result['has_permission']) {
+                    // Still check role permissions as fallback
+                    $hasRolePermission = $this->checkRolePermissionAtTime($permission);
+                    if ($hasRolePermission) {
+                        $result = [
+                            'has_permission' => true,
+                            'source' => 'Role Permission (User constraints not valid)',
+                            'level' => 'role',
+                            'time_valid' => true,
+                        ];
+                    } else {
+                        $result = [
+                            'has_permission' => false,
+                            'source' => 'User Time Constraint',
+                            'level' => 'user',
+                            'time_valid' => false,
+                        ];
+                    }
+                }
+
+                return $result;
+            }
         }
-    }
-    return $result;
-    }
-    }
-    
-    // Priority 2: Role-based permissions
+
+        // Priority 2: Role-based permissions
         $hasRolePermission = $this->checkRolePermissionAtTime($permission);
         $result = [
             'has_permission' => $hasRolePermission,
             'source' => 'Role Permission',
             'level' => 'role',
-            'time_valid' => $hasRolePermission
+            'time_valid' => $hasRolePermission,
         ];
-        
+
         return $result;
     }
 
     private function checkRolePermissionAtTime(string $permission, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
-        
-        if (!$this->relationLoaded('roles')) {
+
+        if (! $this->relationLoaded('roles')) {
             $this->load(['roles' => function ($query) {
                 $query->where('status', 'active')
-                      ->with('timePermissions');
+                    ->with('timePermissions');
             }]);
         }
-        
+
         foreach ($this->roles as $role) {
             // Check if role assignment is valid at this time
             if ($role->pivot->expires_at && $time->gt(Carbon::parse($role->pivot->expires_at))) {
                 continue;
             }
-            
+
             if ($role->pivot->activated_at && $time->lt(Carbon::parse($role->pivot->activated_at))) {
                 continue;
             }
-            
+
             // Check if role has the permission and is valid at this time
             if ($role->isPermissionValidAtTime($permission, $time)) {
                 return true;
             }
-            
+
             // Also check additional permissions from pivot
             $additionalPerms = json_decode($role->pivot->additional_permissions ?? '[]', true);
-            if (!empty($additionalPerms)) {
+            if (! empty($additionalPerms)) {
                 foreach ($additionalPerms as $perm) {
                     if ($this->checkWildcardMatch($perm, $permission)) {
                         return true;
@@ -362,7 +362,7 @@ trait HasRolesAndPermissions
                 }
             }
         }
-        
+
         return false;
     }
 
@@ -372,28 +372,28 @@ trait HasRolesAndPermissions
         if ($definedPermission === $requestedPermission) {
             return true;
         }
-        
+
         // Universal wildcard
         if ($definedPermission === '*') {
             return true;
         }
-        
+
         // Wildcard match (e.g., "admin.*" matches "admin.users")
         if (str_ends_with($definedPermission, '.*')) {
             $prefix = rtrim(substr($definedPermission, 0, -2), '.');
-            if (!empty($prefix) && str_starts_with($requestedPermission, $prefix . '.')) {
+            if (! empty($prefix) && str_starts_with($requestedPermission, $prefix.'.')) {
                 return true;
             }
         }
-        
+
         // Reverse wildcard (requested permission is wildcard)
         if (str_ends_with($requestedPermission, '.*')) {
             $prefix = rtrim(substr($requestedPermission, 0, -2), '.');
-            if (!empty($prefix) && str_starts_with($definedPermission, $prefix . '.')) {
+            if (! empty($prefix) && str_starts_with($definedPermission, $prefix.'.')) {
                 return true;
             }
         }
-        
+
         return false;
     }
 }

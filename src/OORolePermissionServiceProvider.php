@@ -32,14 +32,14 @@ class OORolePermissionServiceProvider extends ServiceProvider
     {
         // Bind TimePermissionValidator as singleton
         $this->app->singleton(TimePermissionValidator::class, function ($app) {
-            return new TimePermissionValidator();
+            return new TimePermissionValidator;
         });
-        
+
         // Bind the main service as singleton for better performance
         $this->app->singleton(OORolePermission::class, function ($app) {
             return new OORolePermission($app->make(TimePermissionValidator::class));
         });
-        
+
         // Register helper alias
         $this->app->alias(OORolePermission::class, 'oo-role-permission');
     }

@@ -5,15 +5,15 @@ namespace OnaOnbir\OORolePermission\Services;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use OnaOnbir\OORolePermission\Models\Role;
-use OnaOnbir\OORolePermission\Models\TimePermission;
 use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class TimePermissionValidator
 {
     protected int $cacheTtl;
+
     protected bool $cacheEnabled;
+
     protected string $defaultTimezone;
 
     public function __construct()
@@ -26,9 +26,9 @@ class TimePermissionValidator
     /**
      * Validate if user has permission at specific time
      */
-    public function validateUserPermission(Model $user, string $permission, Carbon $time = null): bool
+    public function validateUserPermission(Model $user, string $permission, ?Carbon $time = null): bool
     {
-        if (!$this->cacheEnabled) {
+        if (! $this->cacheEnabled) {
             return $this->performUserPermissionCheck($user, $permission, $time);
         }
 
@@ -44,16 +44,16 @@ class TimePermissionValidator
     /**
      * Validate if user has role at specific time
      */
-    public function validateUserRole(Model $user, string|array $role, Carbon $time = null): bool
+    public function validateUserRole(Model $user, string|array $role, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
         $roles = is_array($role) ? $role : [$role];
 
         // Eager load roles with time constraints if not loaded
-        if (!$user->relationLoaded('roles')) {
+        if (! $user->relationLoaded('roles')) {
             $user->load(['roles' => function ($query) {
                 $query->where('status', 'active')
-                      ->with('timePermissions');
+                    ->with('timePermissions');
             }]);
         }
 
@@ -72,17 +72,17 @@ class TimePermissionValidator
     /**
      * Validate if role is active at specific time
      */
-    public function validateRoleAtTime(Role $role, Carbon $time = null): bool
+    public function validateRoleAtTime(Role $role, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
 
         // Role must be active
-        if (!$role->isActive()) {
+        if (! $role->isActive()) {
             return false;
         }
 
         // If no time constraints, role is always valid
-        if (!$role->hasTimeConstraints()) {
+        if (! $role->hasTimeConstraints()) {
             return true;
         }
 
@@ -92,7 +92,7 @@ class TimePermissionValidator
     /**
      * Check if role assignment (pivot) is valid at time
      */
-    public function isRoleAssignmentValidAtTime($pivot, Carbon $time = null): bool
+    public function isRoleAssignmentValidAtTime($pivot, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
 
@@ -149,7 +149,7 @@ class TimePermissionValidator
      */
     public function getUserTimeConstraints(Model $user): Collection
     {
-        if (!$user->relationLoaded('roles')) {
+        if (! $user->relationLoaded('roles')) {
             $user->load(['roles.timePermissions' => function ($query) {
                 $query->active();
             }]);
@@ -159,17 +159,17 @@ class TimePermissionValidator
 
         foreach ($user->roles as $role) {
             foreach ($role->timePermissions as $timePermission) {
-                $permissions = !empty($timePermission->additional_permissions)
+                $permissions = ! empty($timePermission->additional_permissions)
                     ? implode(', ', $timePermission->additional_permissions)
                     : 'All role permissions';
-                    
+
                 $constraints->push([
                     'role' => $role->name,
                     'role_readable' => $role->readable_name,
                     'permissions' => $permissions,
                     'schedule' => $timePermission->getReadableSchedule(),
                     'timezone' => $timePermission->timezone,
-                    'is_active' => $timePermission->isValidAtTime(now())
+                    'is_active' => $timePermission->isValidAtTime(now()),
                 ]);
             }
 
@@ -179,9 +179,9 @@ class TimePermissionValidator
                     'role' => $role->name,
                     'role_readable' => $role->readable_name,
                     'permission' => 'Role Assignment',
-                    'schedule' => 'Expires: ' . Carbon::parse($role->pivot->expires_at)->format('d.m.Y H:i'),
+                    'schedule' => 'Expires: '.Carbon::parse($role->pivot->expires_at)->format('d.m.Y H:i'),
                     'timezone' => $role->pivot->timezone ?: $this->defaultTimezone,
-                    'is_active' => $this->isRoleAssignmentValidAtTime($role->pivot)
+                    'is_active' => $this->isRoleAssignmentValidAtTime($role->pivot),
                 ]);
             }
         }
@@ -203,12 +203,12 @@ class TimePermissionValidator
     public function getNextPermissionChange(Model $user, string $permission): ?Carbon
     {
         $currentStatus = $this->validateUserPermission($user, $permission);
-        
+
         // Check next 24 hours in hourly intervals
         for ($i = 1; $i <= 24; $i++) {
             $checkTime = now()->addHours($i);
             $futureStatus = $this->validateUserPermission($user, $permission, $checkTime);
-            
+
             if ($futureStatus !== $currentStatus) {
                 return $checkTime;
             }
@@ -235,21 +235,21 @@ class TimePermissionValidator
     /**
      * Private helper methods
      */
-    private function performUserPermissionCheck(Model $user, string $permission, Carbon $time = null): bool
+    private function performUserPermissionCheck(Model $user, string $permission, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
 
         // Eager load roles with time constraints if not loaded
-        if (!$user->relationLoaded('roles')) {
+        if (! $user->relationLoaded('roles')) {
             $user->load(['roles' => function ($query) {
                 $query->where('status', 'active')
-                      ->with('timePermissions');
+                    ->with('timePermissions');
             }]);
         }
 
         foreach ($user->roles as $role) {
             // Check if role assignment is valid at this time
-            if (!$this->isRoleAssignmentValidAtTime($role->pivot, $time)) {
+            if (! $this->isRoleAssignmentValidAtTime($role->pivot, $time)) {
                 continue;
             }
 
@@ -266,6 +266,7 @@ class TimePermissionValidator
     {
         $timeKey = $time->format('Y-m-d_H'); // Hour-based caching
         $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
+
         return "{$prefix}time_user_{$user->id}_permission_{$permission}_{$timeKey}";
     }
 }

@@ -8,22 +8,22 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use OnaOnbir\OORolePermission\Models\Role;
-use OnaOnbir\OORolePermission\Services\TimePermissionValidator;
 use OnaOnbir\OORolePermission\Support\CacheHelper;
 
 class OORolePermission
 {
     protected TimePermissionValidator $timeValidator;
 
-    public function __construct(TimePermissionValidator $timeValidator = null)
+    public function __construct(?TimePermissionValidator $timeValidator = null)
     {
         $this->timeValidator = $timeValidator ?: app(TimePermissionValidator::class);
     }
+
     public function can(string|array $permission, string $guard = 'web'): bool
     {
         $user = Auth::guard($guard)->user();
 
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -39,7 +39,7 @@ class OORolePermission
     {
         $user = Auth::guard($guard)->user();
 
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -65,14 +65,14 @@ class OORolePermission
     private function basicModelHasRole(Model $model, string|array $role): bool
     {
         // Eager load roles if not already loaded
-        if (!$model->relationLoaded('roles')) {
+        if (! $model->relationLoaded('roles')) {
             $model->load(['roles' => function ($query) {
                 $query->where('status', 'active');
             }]);
         }
 
         $roleNames = is_array($role) ? $role : [$role];
-        
+
         return $model->roles->whereIn('name', $roleNames)->isNotEmpty();
     }
 
@@ -95,12 +95,13 @@ class OORolePermission
                         // User has constraints but none are valid, still check role permissions as fallback
                     }
                 }
-                
+
                 // Priority 2: Check role-based permissions via time validator
                 if ($this->timeValidator->validateUserPermission($model, $perm)) {
                     return true;
                 }
             }
+
             return false;
         }
 
@@ -111,19 +112,19 @@ class OORolePermission
     private function basicModelHasPermission(Model $model, string|array $permission): bool
     {
         // Eager load roles if not already loaded
-        if (!$model->relationLoaded('roles')) {
+        if (! $model->relationLoaded('roles')) {
             $model->load(['roles' => function ($query) {
                 $query->where('status', 'active');
             }]);
         }
 
         $permissions = is_array($permission) ? $permission : [$permission];
-        
+
         // Check cache first if enabled
         if (CacheHelper::isEnabled()) {
             $cacheKey = $this->getPermissionCacheKey($model, $permissions);
             $cacheTags = ["user_permissions_{$model->id}"];
-            
+
             return CacheHelper::remember($cacheKey, config('oo-role-permission.cache.ttl', 3600), function () use ($model, $permissions) {
                 return $this->checkModelPermissions($model, $permissions);
             }, $cacheTags);
@@ -154,30 +155,31 @@ class OORolePermission
     {
         $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
         $permissionHash = md5(implode('|', $permissions));
+
         return "{$prefix}user_{$model->id}_permissions_{$permissionHash}";
     }
 
     public function assignRoleToModel(Model $model, string $roleName, array $additionalPermissions = []): void
     {
         $this->validateRoleAssignment($roleName);
-        
+
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
-        
+
         $model->roles()->attach($role, [
             'additional_permissions' => json_encode($additionalPermissions),
         ]);
-        
+
         $this->clearModelCache($model);
     }
 
     // Time-based methods
-    public function modelHasRoleAtTime(Model $model, string|array $role, Carbon $time = null): bool
+    public function modelHasRoleAtTime(Model $model, string|array $role, ?Carbon $time = null): bool
     {
         return $this->timeValidator->validateUserRole($model, $role, $time);
     }
 
-    public function modelHasPermissionAtTime(Model $model, string|array $permission, Carbon $time = null): bool
+    public function modelHasPermissionAtTime(Model $model, string|array $permission, ?Carbon $time = null): bool
     {
         $permissions = is_array($permission) ? $permission : [$permission];
         foreach ($permissions as $perm) {
@@ -185,20 +187,21 @@ class OORolePermission
                 return true;
             }
         }
+
         return false;
     }
 
-    public function assignTemporaryRole(Model $model, string $roleName, Carbon $expiresAt, array $additionalPermissions = [], string $timezone = null): void
+    public function assignTemporaryRole(Model $model, string $roleName, Carbon $expiresAt, array $additionalPermissions = [], ?string $timezone = null): void
     {
         $this->validateRoleAssignment($roleName);
-        
+
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
-        
+
         $timezone = $timezone ?: $this->timeValidator->getUserTimezone($model);
-        
+
         $role->createTemporaryAssignment($model, $expiresAt, $additionalPermissions, $timezone);
-        
+
         $this->clearModelCache($model);
     }
 
@@ -226,60 +229,60 @@ class OORolePermission
     {
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->with('timePermissions')->first();
-        
-        if (!$role) {
+
+        if (! $role) {
             return collect();
         }
-        
+
         return $role->timePermissions->map(function ($timePermission) {
-            $permissions = !empty($timePermission->additional_permissions)
+            $permissions = ! empty($timePermission->additional_permissions)
                 ? implode(', ', $timePermission->additional_permissions)
                 : 'All role permissions';
-                
+
             return [
                 'permissions' => $permissions,
                 'schedule' => $timePermission->getReadableSchedule(),
                 'timezone' => $timePermission->timezone,
-                'is_active' => $timePermission->isValidAtTime(now())
+                'is_active' => $timePermission->isValidAtTime(now()),
             ];
         });
     }
 
-    public function isRoleActiveAtTime(string $roleName, Carbon $time = null): bool
+    public function isRoleActiveAtTime(string $roleName, ?Carbon $time = null): bool
     {
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->with('timePermissions')->first();
-        
-        if (!$role) {
+
+        if (! $role) {
             return false;
         }
-        
+
         return $this->timeValidator->validateRoleAtTime($role, $time);
     }
 
     public function updateRolePermissionsForModel(Model $model, string $roleName, array $additionalPermissions = []): void
     {
         $this->validateRoleAssignment($roleName);
-        
+
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
-        
+
         $model->roles()->updateExistingPivot($role->id, [
             'additional_permissions' => json_encode($additionalPermissions),
         ]);
-        
+
         $this->clearModelCache($model);
     }
 
     public function removeRoleFromModel(Model $model, string $roleName): void
     {
         $this->validateRoleAssignment($roleName);
-        
+
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->firstOrFail();
-        
+
         $model->roles()->detach($role);
-        
+
         $this->clearModelCache($model);
     }
 
@@ -292,10 +295,10 @@ class OORolePermission
 
     private function clearModelCache(Model $model): void
     {
-        if (!CacheHelper::isEnabled()) {
+        if (! CacheHelper::isEnabled()) {
             return;
         }
-        
+
         // Clear cache using our helper
         $cacheTags = ["user_permissions_{$model->id}"];
         CacheHelper::flush($cacheTags);
@@ -336,23 +339,23 @@ class OORolePermission
                 }
             }
         }
-        
+
         return false;
     }
 
     private function hasReverseWildcardPermission(array $permissions, string $permission): bool
     {
-        if (!str_ends_with($permission, '.*')) {
+        if (! str_ends_with($permission, '.*')) {
             return false;
         }
-        
+
         $wildcard = rtrim(substr($permission, 0, -2), '.');
         foreach ($permissions as $perm) {
             if (str_starts_with($perm, $wildcard.'.')) {
                 return true;
             }
         }
-        
+
         return false;
     }
 

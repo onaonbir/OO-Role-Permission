@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
 use OnaOnbir\OORolePermission\Enums\OORoleStatus;
 use OnaOnbir\OORolePermission\Enums\OORoleType;
@@ -43,10 +42,10 @@ class Role extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            if (!$model->type) {
+            if (! $model->type) {
                 $model->type = OORoleType::default()->value;
             }
-            if (!$model->status) {
+            if (! $model->status) {
                 $model->status = OORoleStatus::ACTIVE->value;
             }
         });
@@ -56,7 +55,7 @@ class Role extends Model
             if (CacheHelper::isEnabled()) {
                 CacheHelper::flush(['oo_rp_roles']);
             }
-            
+
             // Clear time permission cache if TimePermission exists
             if (class_exists('\OnaOnbir\OORolePermission\Models\TimePermission')) {
                 \OnaOnbir\OORolePermission\Models\TimePermission::clearCacheForRole($role->id);
@@ -67,7 +66,7 @@ class Role extends Model
             if (CacheHelper::isEnabled()) {
                 CacheHelper::flush(['oo_rp_roles']);
             }
-            
+
             // Clear time permission cache if TimePermission exists
             if (class_exists('\OnaOnbir\OORolePermission\Models\TimePermission')) {
                 \OnaOnbir\OORolePermission\Models\TimePermission::clearCacheForRole($role->id);
@@ -115,7 +114,7 @@ class Role extends Model
         return $query->whereHas('timePermissions');
     }
 
-    public function scopeActiveAtTime(Builder $query, Carbon $time = null): Builder
+    public function scopeActiveAtTime(Builder $query, ?Carbon $time = null): Builder
     {
         $time = $time ?: now();
 
@@ -124,9 +123,9 @@ class Role extends Model
                 // Roles without time constraints are always active
                 $q->whereDoesntHave('timePermissions')
                   // OR roles with valid time constraints
-                  ->orWhereHas('timePermissions', function ($timeQuery) use ($time) {
-                      $timeQuery->active()->validAt($time);
-                  });
+                    ->orWhereHas('timePermissions', function ($timeQuery) use ($time) {
+                        $timeQuery->active()->validAt($time);
+                    });
             });
     }
 
@@ -144,18 +143,18 @@ class Role extends Model
     public function hasPermission(string $permission): bool
     {
         $permissions = $this->permissions ?? [];
-        
+
         // Use the same wildcard logic as the main service
         return $this->checkPermissionWithWildcard($permissions, $permission);
     }
-    
+
     private function checkPermissionWithWildcard(array $permissions, string $permission): bool
     {
         // Direct match
         if (in_array($permission, $permissions, true)) {
             return true;
         }
-        
+
         // Universal wildcard
         if (in_array('*', $permissions, true)) {
             return true;
@@ -190,7 +189,7 @@ class Role extends Model
         return $this->timePermissions()->active()->exists();
     }
 
-    public function getActiveTimePermissions(Carbon $time = null): Collection
+    public function getActiveTimePermissions(?Carbon $time = null): Collection
     {
         $time = $time ?: now();
 
@@ -200,23 +199,23 @@ class Role extends Model
             ->get();
     }
 
-    public function isPermissionValidAtTime(string $permission, Carbon $time = null): bool
+    public function isPermissionValidAtTime(string $permission, ?Carbon $time = null): bool
     {
         $time = $time ?: now();
 
         // If role doesn't have basic permission, return false
-        if (!$this->hasPermission($permission)) {
+        if (! $this->hasPermission($permission)) {
             return false;
         }
 
         // If no time constraints, permission is always valid
-        if (!$this->hasTimeConstraints()) {
+        if (! $this->hasTimeConstraints()) {
             return true;
         }
 
         // Get all active time permissions for this role
         $timePermissions = $this->timePermissions()->active()->get();
-        
+
         // Check each time permission to see if it applies to this permission
         foreach ($timePermissions as $timePermission) {
             // Check if this time constraint applies to the requested permission
@@ -227,22 +226,22 @@ class Role extends Model
                 }
             }
         }
-        
+
         // If we have time constraints but none allow access at this time, deny
         return false;
     }
 
-    public function isActiveAtTime(Carbon $time = null): bool
+    public function isActiveAtTime(?Carbon $time = null): bool
     {
         $time = $time ?: now();
 
         // Must be active status
-        if (!$this->isActive()) {
+        if (! $this->isActive()) {
             return false;
         }
 
         // If no time constraints, role is always active
-        if (!$this->hasTimeConstraints()) {
+        if (! $this->hasTimeConstraints()) {
             return true;
         }
 
@@ -252,7 +251,7 @@ class Role extends Model
 
     public function getTimeConstraintsSummary(): array
     {
-        if (!$this->hasTimeConstraints()) {
+        if (! $this->hasTimeConstraints()) {
             return ['type' => 'unrestricted', 'description' => 'Her zaman aktif'];
         }
 
@@ -260,20 +259,20 @@ class Role extends Model
         $summaries = [];
 
         foreach ($constraints as $constraint) {
-            $permissions = !empty($constraint->additional_permissions) 
+            $permissions = ! empty($constraint->additional_permissions)
                 ? implode(', ', $constraint->additional_permissions)
                 : 'Tüm rol izinleri';
-                
+
             $summaries[] = [
                 'permissions' => $permissions,
                 'schedule' => $constraint->getReadableSchedule(),
-                'timezone' => $constraint->timezone
+                'timezone' => $constraint->timezone,
             ];
         }
 
         return [
             'type' => 'time_restricted',
-            'constraints' => $summaries
+            'constraints' => $summaries,
         ];
     }
 
@@ -284,7 +283,7 @@ class Role extends Model
             'additional_permissions' => json_encode($additionalPermissions),
             'expires_at' => $expiresAt,
             'activated_at' => now(),
-            'timezone' => $timezone
+            'timezone' => $timezone,
         ]);
     }
 

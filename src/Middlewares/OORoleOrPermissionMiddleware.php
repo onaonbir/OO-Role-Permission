@@ -4,7 +4,6 @@ namespace OnaOnbir\OORolePermission\Middlewares;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 class OORoleOrPermissionMiddleware
@@ -12,14 +11,11 @@ class OORoleOrPermissionMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param \Illuminate\Http\Request $request
-     * @param \Closure $next
-     * @param string $parameters Format: "roles=admin|editor;permissions=user.create|user.delete"
-     * @return mixed
+     * @param  string  $parameters  Format: "roles=admin|editor;permissions=user.create|user.delete"
      */
     public function handle(Request $request, Closure $next, string $parameters = ''): mixed
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return $this->handleUnauthenticated($request);
         }
 
@@ -31,7 +27,7 @@ class OORoleOrPermissionMiddleware
         }
 
         // Check if user has required role or permission
-        if (!oo_rp()->hasRoleOrCan($roles, $permissions)) {
+        if (! oo_rp()->hasRoleOrCan($roles, $permissions)) {
             Log::warning('Access denied for user', [
                 'user_id' => auth()->id(),
                 'required_roles' => $roles,
@@ -83,7 +79,7 @@ class OORoleOrPermissionMiddleware
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => 'Unauthenticated.',
-                'error' => 'authentication_required'
+                'error' => 'authentication_required',
             ], 401);
         }
 
@@ -98,7 +94,7 @@ class OORoleOrPermissionMiddleware
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => 'Bu işlem için yetkiniz yok.',
-                'error' => 'insufficient_permissions'
+                'error' => 'insufficient_permissions',
             ], 403);
         }
 

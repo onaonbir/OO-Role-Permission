@@ -19,7 +19,7 @@ class CacheHelper
      */
     public static function supportsTagging(): bool
     {
-        if (!self::isEnabled()) {
+        if (! self::isEnabled()) {
             return false;
         }
 
@@ -27,6 +27,7 @@ class CacheHelper
             // Test if the current cache store supports tagging
             Cache::tags(['test'])->put('test_key', 'test_value', 1);
             Cache::tags(['test'])->flush();
+
             return true;
         } catch (\Exception $e) {
             return false;
@@ -38,22 +39,23 @@ class CacheHelper
      */
     public static function remember(string $key, int $ttl, callable $callback, array $tags = [])
     {
-        if (!self::isEnabled()) {
+        if (! self::isEnabled()) {
             return $callback();
         }
 
         try {
-            if (!empty($tags) && self::supportsTagging()) {
+            if (! empty($tags) && self::supportsTagging()) {
                 return Cache::tags($tags)->remember($key, $ttl, $callback);
             }
 
             return Cache::remember($key, $ttl, $callback);
         } catch (\Exception $e) {
             // If cache fails, execute callback directly
-            Log::warning('Cache remember failed: ' . $e->getMessage(), [
+            Log::warning('Cache remember failed: '.$e->getMessage(), [
                 'key' => $key,
-                'tags' => $tags
+                'tags' => $tags,
             ]);
+
             return $callback();
         }
     }
@@ -63,20 +65,20 @@ class CacheHelper
      */
     public static function forget(string $key, array $tags = []): void
     {
-        if (!self::isEnabled()) {
+        if (! self::isEnabled()) {
             return;
         }
 
         try {
-            if (!empty($tags) && self::supportsTagging()) {
+            if (! empty($tags) && self::supportsTagging()) {
                 Cache::tags($tags)->forget($key);
             } else {
                 Cache::forget($key);
             }
         } catch (\Exception $e) {
-            Log::warning('Cache forget failed: ' . $e->getMessage(), [
+            Log::warning('Cache forget failed: '.$e->getMessage(), [
                 'key' => $key,
-                'tags' => $tags
+                'tags' => $tags,
             ]);
         }
     }
@@ -86,20 +88,20 @@ class CacheHelper
      */
     public static function flush(array $tags = []): void
     {
-        if (!self::isEnabled()) {
+        if (! self::isEnabled()) {
             return;
         }
 
         try {
-            if (!empty($tags) && self::supportsTagging()) {
+            if (! empty($tags) && self::supportsTagging()) {
                 Cache::tags($tags)->flush();
             } else {
                 // For stores without tagging, we have to flush all
                 Cache::flush();
             }
         } catch (\Exception $e) {
-            Log::warning('Cache flush failed: ' . $e->getMessage(), [
-                'tags' => $tags
+            Log::warning('Cache flush failed: '.$e->getMessage(), [
+                'tags' => $tags,
             ]);
         }
     }
@@ -110,6 +112,7 @@ class CacheHelper
     public static function key(string $key): string
     {
         $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
-        return $prefix . $key;
+
+        return $prefix.$key;
     }
 }
