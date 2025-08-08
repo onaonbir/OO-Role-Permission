@@ -2,31 +2,34 @@
 
 namespace OnaOnbir\OORolePermission\Services;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use InvalidArgumentException;
 
 class OORolePermission
 {
-    public function can($permission, $guard = 'web'): bool
+    public function can(string|array $permission, string $guard = 'web'): bool
     {
         $user = Auth::guard($guard)->user();
 
-        if (! $user) {
+        if (!$user) {
             return false;
         }
 
         return $this->modelHasPermission($user, $permission);
     }
 
-    public function canWUser($user, $permission): bool
+    public function canWUser(Model $user, string|array $permission): bool
     {
         return $this->modelHasPermission($user, $permission);
     }
 
-    public function hasRole($role, $guard = 'web'): bool
+    public function hasRole(string|array $role, string $guard = 'web'): bool
     {
         $user = Auth::guard($guard)->user();
 
-        if (! $user) {
+        if (!$user) {
             return false;
         }
 
@@ -38,24 +41,47 @@ class OORolePermission
         return $this->hasRole($roles, $guard) || $this->can($permissions, $guard);
     }
 
-    public function modelHasRole($model, $role): bool
+    public function modelHasRole(Model $model, string|array $role): bool
     {
-        $roleModel = config('oo-role-permission.models.role');
-
-        if (is_array($role)) {
-            return $model->roles()->whereIn('name', $role)->where('status', 'active')->exists();
+        // Eager load roles if not already loaded
+        if (!$model->relationLoaded('roles')) {
+            $model->load(['roles' => function ($query) {
+                $query->where('status', 'active');
+            }]);
         }
 
-        return $model->roles()->where('name', $role)->where('status', 'active')->exists();
+        $roleNames = is_array($role) ? $role : [$role];
+        
+        return $model->roles->whereIn('name', $roleNames)->isNotEmpty();
     }
 
-    public function modelHasPermission($model, $permission): bool
+    public function modelHasPermission(Model $model, string|array $permission): bool
     {
-        $permissions = is_array($permission) ? $permission : [$permission];
+        // Eager load roles if not already loaded
+        if (!$model->relationLoaded('roles')) {
+            $model->load(['roles' => function ($query) {
+                $query->where('status', 'active');
+            }]);
+        }
 
+        $permissions = is_array($permission) ? $permission : [$permission];
+        
+        // Check cache first if enabled
+        if (config('oo-role-permission.cache.enabled', true)) {
+            $cacheKey = $this->getPermissionCacheKey($model, $permissions);
+            return Cache::remember($cacheKey, config('oo-role-permission.cache.ttl', 3600), function () use ($model, $permissions) {
+                return $this->checkModelPermissions($model, $permissions);
+            });
+        }
+
+        return $this->checkModelPermissions($model, $permissions);
+    }
+
+    private function checkModelPermissions(Model $model, array $permissions): bool
+    {
         foreach ($model->roles as $role) {
             foreach ($permissions as $perm) {
-                if ($this->checkPermission($role->permissions, $perm)) {
+                if ($this->checkPermission($role->permissions ?? [], $perm)) {
                     return true;
                 }
 
@@ -69,39 +95,96 @@ class OORolePermission
         return false;
     }
 
-    public function assignRoleToModel($model, $roleName, array $additionalPermissions = []): void
+    private function getPermissionCacheKey(Model $model, array $permissions): string
     {
+        $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
+        $permissionHash = md5(implode('|', $permissions));
+        return "{$prefix}user_{$model->id}_permissions_{$permissionHash}";
+    }
+
+    public function assignRoleToModel(Model $model, string $roleName, array $additionalPermissions = []): void
+    {
+        $this->validateRoleAssignment($roleName);
+        
         $roleModel = config('oo-role-permission.models.role');
-        $role = $roleModel::where('name', $roleName)->firstOrFail();
+        $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
+        
         $model->roles()->attach($role, [
             'additional_permissions' => json_encode($additionalPermissions),
         ]);
+        
+        $this->clearModelCache($model);
     }
 
-    public function updateRolePermissionsForModel($model, $roleName, array $additionalPermissions = []): void
+    public function updateRolePermissionsForModel(Model $model, string $roleName, array $additionalPermissions = []): void
     {
+        $this->validateRoleAssignment($roleName);
+        
         $roleModel = config('oo-role-permission.models.role');
-        $role = $roleModel::where('name', $roleName)->firstOrFail();
+        $role = $roleModel::where('name', $roleName)->where('status', 'active')->firstOrFail();
+        
         $model->roles()->updateExistingPivot($role->id, [
             'additional_permissions' => json_encode($additionalPermissions),
         ]);
+        
+        $this->clearModelCache($model);
     }
 
-    public function removeRoleFromModel($model, $roleName): void
+    public function removeRoleFromModel(Model $model, string $roleName): void
     {
+        $this->validateRoleAssignment($roleName);
+        
         $roleModel = config('oo-role-permission.models.role');
         $role = $roleModel::where('name', $roleName)->firstOrFail();
+        
         $model->roles()->detach($role);
+        
+        $this->clearModelCache($model);
+    }
+
+    private function validateRoleAssignment(string $roleName): void
+    {
+        if (empty($roleName)) {
+            throw new InvalidArgumentException('Role name cannot be empty');
+        }
+    }
+
+    private function clearModelCache(Model $model): void
+    {
+        if (config('oo-role-permission.cache.enabled', true)) {
+            $prefix = config('oo-role-permission.cache.key_prefix', 'oo_rp:');
+            $pattern = "{$prefix}user_{$model->id}_permissions_*";
+            Cache::forget($pattern);
+        }
     }
 
     private function checkPermission(array $permissions, string $permission): bool
     {
-        // Direct match
-        if (in_array($permission, $permissions, true)) {
+        // Direct match check
+        if ($this->hasDirectPermission($permissions, $permission)) {
             return true;
         }
 
-        // Wildcard match: defined permission has wildcard (e.g., post.*)
+        // Wildcard permission checks
+        if ($this->hasWildcardPermission($permissions, $permission)) {
+            return true;
+        }
+
+        // Reverse wildcard check
+        if ($this->hasReverseWildcardPermission($permissions, $permission)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function hasDirectPermission(array $permissions, string $permission): bool
+    {
+        return in_array($permission, $permissions, true);
+    }
+
+    private function hasWildcardPermission(array $permissions, string $permission): bool
+    {
         foreach ($permissions as $perm) {
             if (str_ends_with($perm, '.*')) {
                 $wildcard = rtrim(substr($perm, 0, -2), '.');
@@ -110,17 +193,23 @@ class OORolePermission
                 }
             }
         }
+        
+        return false;
+    }
 
-        // Reverse wildcard match: requested permission is a wildcard
-        if (str_ends_with($permission, '.*')) {
-            $wildcard = rtrim(substr($permission, 0, -2), '.');
-            foreach ($permissions as $perm) {
-                if (str_starts_with($perm, $wildcard.'.')) {
-                    return true;
-                }
+    private function hasReverseWildcardPermission(array $permissions, string $permission): bool
+    {
+        if (!str_ends_with($permission, '.*')) {
+            return false;
+        }
+        
+        $wildcard = rtrim(substr($permission, 0, -2), '.');
+        foreach ($permissions as $perm) {
+            if (str_starts_with($perm, $wildcard.'.')) {
+                return true;
             }
         }
-
+        
         return false;
     }
 

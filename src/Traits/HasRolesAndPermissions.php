@@ -34,11 +34,25 @@ trait HasRolesAndPermissions
 
     public function hasRole(string|array $role): bool
     {
+        // Eager load roles if not already loaded to prevent N+1
+        if (!$this->relationLoaded('roles')) {
+            $this->load(['roles' => function ($query) {
+                $query->where('status', 'active');
+            }]);
+        }
+        
         return oo_rp()->modelHasRole($this, $role);
     }
 
     public function hasPermission(string|array $permission): bool
     {
+        // Eager load roles if not already loaded to prevent N+1
+        if (!$this->relationLoaded('roles')) {
+            $this->load(['roles' => function ($query) {
+                $query->where('status', 'active');
+            }]);
+        }
+        
         return oo_rp()->modelHasPermission($this, $permission);
     }
 
@@ -47,8 +61,12 @@ trait HasRolesAndPermissions
         return $this->hasRole($roles) || $this->hasPermission($permissions);
     }
 
+    /**
+     * @deprecated Use hasPermission() instead
+     */
     public function hasSubPermission(string $key): bool
     {
+        trigger_error('hasSubPermission is deprecated, use hasPermission instead', E_USER_DEPRECATED);
         return $this->hasPermission($key);
     }
 

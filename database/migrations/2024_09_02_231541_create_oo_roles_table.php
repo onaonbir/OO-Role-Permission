@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create(config('oo-role-permission.tables.roles'), function (Blueprint $table) {
-            $table->id()->unique();
-            $table->string('name');
+            $table->id();
+            $table->string('name')->unique(); // Ensure unique role names
             $table->string('readable_name')->nullable();
             $table->text('description')->nullable();
             $table->json('permissions');
@@ -22,6 +22,11 @@ return new class extends Migration
             $table->string('status')->default('active')->nullable();
             $table->json('attributes')->nullable();
             $table->timestamps();
+            
+            // Performance indexes
+            $table->index(['name', 'status']);
+            $table->index('status');
+            $table->index('type');
         });
 
         Schema::create(config('oo-role-permission.tables.role_models'), function (Blueprint $table) {
@@ -33,6 +38,13 @@ return new class extends Migration
             $table->string('model_id');
             $table->json('additional_permissions')->nullable();
             $table->timestamps();
+            
+            // Performance indexes
+            $table->index(['model_type', 'model_id']);
+            $table->index(['role_id', 'model_type']);
+            
+            // Prevent duplicate role assignments
+            $table->unique(['role_id', 'model_type', 'model_id'], 'unique_role_model');
         });
     }
 
@@ -41,7 +53,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists(config('oo-role-permission.tables.roles'));
         Schema::dropIfExists(config('oo-role-permission.tables.role_models'));
+        Schema::dropIfExists(config('oo-role-permission.tables.roles'));
     }
 };

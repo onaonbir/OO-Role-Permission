@@ -12,6 +12,12 @@ return [
         'role_model' => \OnaOnbir\OORolePermission\Models\RoleModel::class,
     ],
 
+    'cache' => [
+        'enabled' => env('OO_ROLE_PERMISSION_CACHE', true),
+        'ttl' => env('OO_ROLE_PERMISSION_CACHE_TTL', 3600),
+        'key_prefix' => 'oo_rp:',
+    ],
+
     'permissions' => [
 
         [
@@ -21,13 +27,13 @@ return [
             'group' => 'Sistem İzinleri',
             'sub_permissions' => [
                 [
-                    'key' => 'access.panels',
+                    'key' => 'access.panels.admin',
                     'readable_name' => 'Yönetim Paneli Erişimi',
                     'description' => 'Yönetim paneline giriş yapabilme yetkisini tanımlar.',
                     'group' => 'Sistem İzinleri',
                 ],
                 [
-                    'key' => 'access.panels',
+                    'key' => 'access.panels.user',
                     'readable_name' => 'Kullanıcı Paneli Erişimi',
                     'description' => 'Kullanıcı paneline giriş yapabilme yetkisini tanımlar.',
                     'group' => 'Sistem İzinleri',

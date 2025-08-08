@@ -1,7 +1,15 @@
-# 🔐 OORolePermission — Flexible Role & Permission System for Laravel
+# 🔐 OORolePermission — Production-Ready Role & Permission System for Laravel
 
-**OORolePermission** is a dynamic, model-based, and polymorphic role & permission management system for Laravel.  
-It supports structured role definitions, JSON-based permissions, wildcard matching, scoped checks, and custom service-driven logic.
+**OORolePermission** is a high-performance, dynamic, model-based, and polymorphic role & permission management system for Laravel.  
+It supports structured role definitions, JSON-based permissions, wildcard matching, scoped checks, caching, and custom service-driven logic.
+
+## ✨ **v1.1.0 Features**
+
+- 🚀 **High Performance**: Built-in caching and N+1 query prevention
+- 🔒 **Production Ready**: Comprehensive error handling and logging
+- 📊 **Database Optimized**: Smart indexes and constraints
+- 🎯 **Type Safe**: Strict type hints throughout
+- 🔄 **Backward Compatible**: No breaking changes from v1.0.x
 
 ---
 
@@ -25,6 +33,46 @@ php artisan migrate
 ```bash
 php artisan vendor:publish --tag=oo-role-permission-config
 ```
+
+4. (Optional) Configure caching in your `.env`:
+
+```bash
+# Enable/disable permission caching (default: true)
+OO_ROLE_PERMISSION_CACHE=true
+
+# Cache TTL in seconds (default: 3600 = 1 hour)
+OO_ROLE_PERMISSION_CACHE_TTL=3600
+```
+
+---
+
+## ⚡ **Performance Features**
+
+### **Automatic Caching**
+Permission checks are automatically cached to improve performance:
+
+```php
+// First call: queries database
+$user->hasPermission('post.create');
+
+// Subsequent calls: served from cache
+$user->hasPermission('post.create'); // ⚡ Cached!
+```
+
+### **N+1 Query Prevention**
+Relationships are automatically eager loaded:
+
+```php
+// Automatically prevents N+1 queries
+foreach ($users as $user) {
+    $user->hasRole('admin'); // No additional queries!
+}
+```
+
+### **Database Optimizations**
+- Smart indexes on frequently queried columns
+- Unique constraints to prevent duplicate data
+- Optimized foreign key relationships
 
 ---
 
