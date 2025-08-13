@@ -14,17 +14,17 @@ trait HasTimeConstraints
     public function timePermissions(): MorphMany
     {
         $timePermissionModel = config('oo-role-permission.models.time_permission');
-        
+
         // Ensure we have a valid class name string
         if (is_object($timePermissionModel)) {
             $timePermissionModel = get_class($timePermissionModel);
         }
-        
+
         // Fallback to default if config is empty
-        if (!$timePermissionModel || !class_exists($timePermissionModel)) {
+        if (! $timePermissionModel || ! class_exists($timePermissionModel)) {
             $timePermissionModel = \OnaOnbir\OORolePermission\Models\TimePermission::class;
         }
-        
+
         return $this->morphMany($timePermissionModel, 'constraintable');
     }
 
