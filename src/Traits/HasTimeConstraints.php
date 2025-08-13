@@ -13,7 +13,19 @@ trait HasTimeConstraints
      */
     public function timePermissions(): MorphMany
     {
-        return $this->morphMany(config('oo-role-permission.models.time_permission'), 'constraintable');
+        $timePermissionModel = config('oo-role-permission.models.time_permission');
+        
+        // Ensure we have a valid class name string
+        if (is_object($timePermissionModel)) {
+            $timePermissionModel = get_class($timePermissionModel);
+        }
+        
+        // Fallback to default if config is empty
+        if (!$timePermissionModel || !class_exists($timePermissionModel)) {
+            $timePermissionModel = \OnaOnbir\OORolePermission\Models\TimePermission::class;
+        }
+        
+        return $this->morphMany($timePermissionModel, 'constraintable');
     }
 
     /**
@@ -21,7 +33,7 @@ trait HasTimeConstraints
      */
     public function activeTimePermissions(): MorphMany
     {
-        return $this->timePermissions()->active();
+        return $this->timePermissions()->where('is_active', true);
     }
 
     /**
@@ -29,7 +41,7 @@ trait HasTimeConstraints
      */
     public function hasTimeConstraints(): bool
     {
-        return $this->timePermissions()->active()->exists();
+        return $this->timePermissions()->where('is_active', true)->exists();
     }
 
     /**
@@ -74,7 +86,7 @@ trait HasTimeConstraints
     public function getTimeConstraintsForPermission(string $permission): \Illuminate\Support\Collection
     {
         return $this->timePermissions()
-            ->active()
+            ->where('is_active', true)
             ->get()
             ->filter(function ($constraint) use ($permission) {
                 return $constraint->appliesToPermission($permission);
@@ -127,7 +139,7 @@ trait HasTimeConstraints
             ];
         }
 
-        $constraints = $this->timePermissions()->active()->get();
+        $constraints = $this->timePermissions()->where('is_active', true)->get();
         $summaries = [];
 
         foreach ($constraints as $constraint) {
