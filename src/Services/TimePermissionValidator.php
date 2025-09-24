@@ -265,7 +265,7 @@ class TimePermissionValidator
 
             // Check additional permissions from pivot table
             $additionalPermissions = json_decode($role->pivot->additional_permissions ?? '[]', true);
-            if (!empty($additionalPermissions)) {
+            if (! empty($additionalPermissions)) {
                 // Use the same permission checking logic as the main service
                 if ($this->checkPermissionWithWildcard($additionalPermissions, $permission)) {
                     // For additional permissions, we still need to check if role has time constraints
