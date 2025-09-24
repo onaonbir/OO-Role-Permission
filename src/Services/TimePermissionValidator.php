@@ -253,9 +253,77 @@ class TimePermissionValidator
                 continue;
             }
 
-            // Check if role is valid at this time and has the permission
-            if ($this->validateRoleAtTime($role, $time) && $role->isPermissionValidAtTime($permission, $time)) {
+            // Check if role is valid at this time
+            if (! $this->validateRoleAtTime($role, $time)) {
+                continue;
+            }
+
+            // Check role's base permissions
+            if ($role->isPermissionValidAtTime($permission, $time)) {
                 return true;
+            }
+
+            // Check additional permissions from pivot table
+            $additionalPermissions = json_decode($role->pivot->additional_permissions ?? '[]', true);
+            if (!empty($additionalPermissions)) {
+                // Use the same permission checking logic as the main service
+                if ($this->checkPermissionWithWildcard($additionalPermissions, $permission)) {
+                    // For additional permissions, we still need to check if role has time constraints
+                    if (! $role->hasTimeConstraints()) {
+                        return true; // No time constraints, additional permission is valid
+                    }
+
+                    // If role has time constraints, check if any time permission allows this additional permission
+                    $timePermissions = $role->timePermissions()->active()->get();
+                    foreach ($timePermissions as $timePermission) {
+                        if ($timePermission->appliesToPermission($permission) && $timePermission->isValidAtTime($time)) {
+                            return true;
+                        }
+                        // If time permission has no specific additional_permissions (empty array),
+                        // it applies to all role permissions including additional ones
+                        if (empty($timePermission->additional_permissions) && $timePermission->isValidAtTime($time)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check permission with wildcard support
+     */
+    private function checkPermissionWithWildcard(array $permissions, string $permission): bool
+    {
+        // Direct match
+        if (in_array($permission, $permissions, true)) {
+            return true;
+        }
+
+        // Universal wildcard
+        if (in_array('*', $permissions, true)) {
+            return true;
+        }
+
+        // Wildcard match: defined permission has wildcard (e.g., access.*)
+        foreach ($permissions as $perm) {
+            if (str_ends_with($perm, '.*')) {
+                $wildcard = rtrim(substr($perm, 0, -2), '.');
+                if (str_starts_with($permission, $wildcard.'.')) {
+                    return true;
+                }
+            }
+        }
+
+        // Reverse wildcard match: requested permission is a wildcard
+        if (str_ends_with($permission, '.*')) {
+            $wildcard = rtrim(substr($permission, 0, -2), '.');
+            foreach ($permissions as $perm) {
+                if (str_starts_with($perm, $wildcard.'.')) {
+                    return true;
+                }
             }
         }
 
