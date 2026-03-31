@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'composer.json'
 
 permissions:
   contents: write
@@ -15,29 +17,39 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Fetch tags from remote
-        run: git fetch --tags
+        with:
+          fetch-depth: 0
 
       - name: Read version from composer.json
         id: version
         run: |
-          VERSION=$(jq -r .version composer.json)
+          VERSION=$(jq -r '.version // empty' composer.json)
+          if [ -z "$VERSION" ]; then
+            echo "No version field in composer.json, skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
 
-      - name: Create or Recreate Git tag
+      - name: Check if tag already exists
+        if: steps.version.outputs.skip != 'true'
+        id: check
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          if git tag -l | grep -q "^$VERSION$"; then
+            echo "Tag $VERSION already exists, skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and push tag
+        if: steps.version.outputs.skip != 'true' && steps.check.outputs.exists != 'true'
         run: |
           VERSION="v${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Check if tag exists remotely
-          if git ls-remote --tags origin | grep -q "refs/tags/$VERSION"; then
-            echo "⚠️ Tag $VERSION already exists. Deleting it..."
-            git push origin ":refs/tags/$VERSION"
-            git tag -d "$VERSION" || true
-          fi
-
-          git tag -a "$VERSION" -m "Version $VERSION"
+          git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
-          echo "🚀 Tag $VERSION created and pushed."
+          echo "Tag $VERSION created and pushed."

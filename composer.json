@@ -1,9 +1,10 @@
 {
     "name": "onaonbir/oo-role-permission",
-    "description": "Flexible and polymorphic role & permission system for Laravel applications.",
+    "description": "Flexible and polymorphic role & permission system for Laravel with time-based constraints, wildcard matching, and middleware integration.",
     "type": "library",
-    "version": "1.3.3",
+    "version": "1.4.0",
     "license": "MIT",
+    "homepage": "https://onaonbir.com",
     "keywords": [
         "laravel",
         "role",
@@ -11,10 +12,10 @@
         "authorization",
         "rbac",
         "polymorphic",
-        "package",
-        "performance",
-        "cache",
-        "production"
+        "time-based",
+        "wildcard",
+        "middleware",
+        "access-control"
     ],
     "require": {
         "php": "^8.3",
@@ -39,8 +40,9 @@
     },
     "authors": [
         {
-            "name": "Berkay Barışkan",
-            "email": "berkaybariskan0208@gmail.com"
+            "name": "OnaOnbir",
+            "email": "dev@onaonbir.com",
+            "homepage": "https://onaonbir.com"
         }
     ],
     "support": {

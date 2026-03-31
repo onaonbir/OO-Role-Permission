@@ -506,7 +506,8 @@ $roles = array_merge(['Super Admin'], $roles); // optional enhancement
 
 ---
 
-## 🛠️ License
+## License
 
-MIT © OnaOnbir
-Crafted with precision and clean structure.
+MIT - See [LICENSE](LICENSE) for details.
+
+Built by [OnaOnbir](https://onaonbir.com).
